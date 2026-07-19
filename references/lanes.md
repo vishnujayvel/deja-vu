@@ -34,6 +34,21 @@ stdout (single JSON object):
 Run it with the widest `--query` first (one of the Stage 2 vocabularies), then re-run with a
 second vocabulary if the first returns thin results — don't assume one phrasing covers the space.
 
+### Quick tier: when results look wrapper-heavy
+
+On the quick tier (github + registry only), if hits are mostly thin wrappers or low-star
+clones of the same idea, **add one LibHunt alternatives check before judging**:
+
+```
+https://www.libhunt.com/search?q=<term>
+```
+
+Keyword sweeps miss category leaders when self-description vocabulary diverges. Day-one
+link-checking hunt: two sweeps (`markdown link checker`, `broken link checker`) returned
+wrapper actions and a dormant runner-up — **lychee** (the actual category leader) only
+surfaced after a curation/lookup pivot. One LibHunt pass is cheap insurance against that
+failure mode; it is not a substitute for a second vocabulary, it sits beside it.
+
 ## Deterministic lane detail: what `sweep.py` is actually hitting
 
 | Lane (`--lanes` value) | Question it answers | What it calls |
@@ -53,6 +68,24 @@ second vocabulary if the first returns thin results — don't assume one phrasin
 | **Freshness** | Did someone ship this in the last 30 days? | Invoke the `last30days` skill if installed (sweeps Reddit/X/HN/YouTube); if not installed, degrade to a plain `WebSearch` for `"<vocabulary>" 2026` — never hard-fail the lane for a missing optional dependency |
 | **Skills ecosystem** | Did someone already build this as an agent skill? | `npx skills search "<vocabulary>"` (vercel-labs find-skills) or the skills.sh index |
 | **General web** | What do essays/comparisons/discussions say? | `WebSearch` over `"<vocabulary>" vs`, `"<vocabulary>" alternatives`, `"<vocabulary>" review` |
+
+## Concept hunts
+
+Not every prior-art question has code to sweep. Design-pattern and architecture questions
+("how should we structure multi-tenant isolation?", "is there a standard for X?") still run
+the same loop — framing → blind parallel lanes → snowball → judge → gate — but the **lanes
+become different sources**:
+
+| Concept-hunt lane | What it answers | Where to look |
+|---|---|---|
+| **Standards bodies** | Is this codified? | ISO, INCOSE, IETF RFCs, W3C, NIST — search the body's catalog, not just web essays about it |
+| **Framework docs** | Did a mature framework already decide this? | Official guides and ADRs for the stack in play (e.g. Django multi-tenancy patterns, k8s multi-tenancy docs) |
+| **Academic / survey search** | What does the literature call the shape? | Scholar / Semantic Scholar / recent survey papers for the vocabulary from Stage 2 |
+
+`scripts/sweep.py` may return empty or near-empty on pure concept hunts — that is expected,
+not a failed sweep. Still run it once (a library sometimes *does* encode the pattern); then
+weight the concept lanes above. Receipts still required: name the standard/RFC/doc page,
+not a vibe.
 
 ## Dispatch pattern
 
