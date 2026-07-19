@@ -236,7 +236,7 @@ required. **No LICENSE file** — all rights reserved — and an anonymous autho
 was *not* forked; its designs were treated as a reference and reimplemented (ADR-1, §9).
 What it lacked is exactly what deja-vu adds: probing, snowballing, freshness, re-problem,
 the gate, and learning.
-² https://github.com/TrevorS/dot-claude/tree/master/skills/github-prior-art — "search
+² https://github.com/TrevorS/dot-claude/tree/449a215248c52106f1d13d686e4c31debe9952f5/skills/github-prior-art (since removed upstream; permalink to last extant version) — "search
 GitHub before answering"; no verdict, no scoring.
 ³ https://github.com/vercel-labs/skills — mature (26k+ stars), solves a different problem
 (finding installable agent *skills*); wired in as deja-vu's skills-ecosystem lane rather
