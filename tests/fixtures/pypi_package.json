@@ -1,0 +1,9 @@
+{
+  "info": {
+    "name": "example-rate-limiter",
+    "summary": "A simple rate limiter",
+    "license": "MIT",
+    "project_url": "https://pypi.org/project/example-rate-limiter/",
+    "package_url": "https://pypi.org/project/example-rate-limiter/"
+  }
+}

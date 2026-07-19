@@ -1,0 +1,16 @@
+{
+  "objects": [
+    {
+      "package": {
+        "name": "example-rate-limiter",
+        "description": "token bucket rate limiter for node",
+        "date": "2026-05-01T00:00:00.000Z",
+        "license": "MIT",
+        "links": {
+          "npm": "https://www.npmjs.com/package/example-rate-limiter",
+          "repository": "https://github.com/example/example-rate-limiter"
+        }
+      }
+    }
+  ]
+}

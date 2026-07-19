@@ -1,0 +1,7 @@
+[
+  {"name": "big-project", "stargazers_count": 3000, "fork": false},
+  {"name": "forked-thing", "stargazers_count": 5000, "fork": true},
+  {"name": "mid-project", "stargazers_count": 500, "fork": false},
+  {"name": "small-project", "stargazers_count": 10, "fork": false},
+  {"name": "tiny-project", "stargazers_count": 1, "fork": false}
+]

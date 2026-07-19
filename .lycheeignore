@@ -1,0 +1,2 @@
+# hosts that rate-limit CI
+https://grep.app/api/*

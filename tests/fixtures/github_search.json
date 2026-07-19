@@ -1,0 +1,21 @@
+{
+  "total_count": 2,
+  "items": [
+    {
+      "full_name": "example/rate-limiter",
+      "html_url": "https://github.com/example/rate-limiter",
+      "description": "A tiny token-bucket rate limiter",
+      "stargazers_count": 420,
+      "pushed_at": "2026-06-01T12:00:00Z",
+      "license": {"spdx_id": "MIT"}
+    },
+    {
+      "full_name": "example/queue-thing",
+      "html_url": "https://github.com/example/queue-thing",
+      "description": "A minimal job queue library",
+      "stargazers_count": 12,
+      "pushed_at": "2020-01-01T00:00:00Z",
+      "license": null
+    }
+  ]
+}

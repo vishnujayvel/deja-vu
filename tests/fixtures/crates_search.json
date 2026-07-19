@@ -1,0 +1,10 @@
+{
+  "crates": [
+    {
+      "name": "example-ratelimit",
+      "description": "rate limiting crate",
+      "updated_at": "2026-04-01T00:00:00Z",
+      "downloads": 15000
+    }
+  ]
+}

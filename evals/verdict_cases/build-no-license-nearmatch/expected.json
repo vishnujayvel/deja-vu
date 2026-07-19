@@ -1,0 +1,9 @@
+{
+  "verdict": "BUILD",
+  "key_reasons": [
+    "no LICENSE file on anon-dev/proto-scout means all rights reserved -- forking or vendoring it is not legally clean",
+    "unknown-experimental provenance: 2 followers, 3-month-old account, all commits in a short window",
+    "orthogonality rule: the probe may find the ideas good, but provenance says do not run this code -- reimplement the ideas instead of adopting the artifact",
+    "a BUILD verdict cannot self-approve; it requires human sign-off before any custom code is written"
+  ]
+}

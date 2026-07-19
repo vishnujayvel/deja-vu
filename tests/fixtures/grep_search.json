@@ -1,0 +1,10 @@
+{
+  "hits": {
+    "hits": [
+      {"repo": {"raw": "example/rate-limiter"}, "path": {"raw": "src/limiter.py"}},
+      {"repo": {"raw": "example/rate-limiter"}, "path": {"raw": "tests/test_limiter.py"}},
+      {"repo": {"raw": "another/project"}, "path": {"raw": "lib/index.js"}}
+    ],
+    "total": {"value": 3}
+  }
+}

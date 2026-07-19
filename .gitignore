@@ -6,8 +6,13 @@ __pycache__/
 *.log
 .scratch/
 
+# Private sanitize-check denylist (deja-vu-vp1.5) — holds strings that must
+# never be committed; scripts/sanitize_check.sh tolerates its absence.
+.sanitize-denylist
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+data/decisions-registry.jsonl

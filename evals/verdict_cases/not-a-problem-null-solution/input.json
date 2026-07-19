@@ -1,0 +1,18 @@
+{
+  "problem": "need a custom log-rotation daemon because the disk fills up every few weeks",
+  "sweep": {
+    "query": "custom log rotation daemon",
+    "lanes_run": [],
+    "candidates": [],
+    "errors": []
+  },
+  "provenance": {
+    "profiles": [],
+    "errors": []
+  },
+  "null_solutions_considered": [
+    "raise the disk quota",
+    "point logs at the already-installed OS logrotate instead of writing a new daemon",
+    "delete the requirement: ship logs to the existing centralized log sink and stop keeping local copies"
+  ]
+}

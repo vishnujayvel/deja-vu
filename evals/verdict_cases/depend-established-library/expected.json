@@ -1,0 +1,9 @@
+{
+  "verdict": "DEPEND",
+  "key_reasons": [
+    "acme-org/ratelimit-go is Apache-2.0, a permissive license with no AGPL/SSPL/no-LICENSE trap",
+    "established-practitioner maintainer signal: 7+ year account, company-backed, healthy OpenSSF Scorecard (8.1)",
+    "rate limiting is commodity plumbing, not this team's differentiator -- the competency test defaults to adopt",
+    "the higher-star twitter-scrape-tool result is an unrelated match on the search term and must be discarded, not ranked by stars"
+  ]
+}

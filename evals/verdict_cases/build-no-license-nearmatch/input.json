@@ -1,0 +1,37 @@
+{
+  "problem": "need an 8-stage build-vs-borrow prior-art pipeline for internal tooling",
+  "sweep": {
+    "query": "build vs borrow prior art pipeline",
+    "lanes_run": ["github", "registry"],
+    "candidates": [
+      {
+        "name": "anon-dev/proto-scout",
+        "url": "https://github.com/anon-dev/proto-scout",
+        "source_lane": "github",
+        "description": "Scout script: DETECT-to-VERDICT pipeline, no LICENSE file in the repo",
+        "stars": 180,
+        "last_push": "2026-05-10",
+        "license": null,
+        "scorecard": null,
+        "registry_downloads": null
+      }
+    ],
+    "errors": []
+  },
+  "provenance": {
+    "profiles": [
+      {
+        "login": "anon-dev",
+        "name": null,
+        "company": null,
+        "created_at": "2026-04-20T00:00:00Z",
+        "followers": 2,
+        "public_repos": 3,
+        "account_age_years": 0.25,
+        "other_notable": [],
+        "signal": "unknown-experimental"
+      }
+    ],
+    "errors": []
+  }
+}

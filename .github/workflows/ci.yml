@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: python3 -m pip install --upgrade pip pytest
+
+      - name: Run unit tests
+        run: pytest tests/ -q
+
+      - name: Run offline evals
+        run: python3 evals/run_evals.py --offline
+
+      - name: Sanitization sweep
+        run: bash scripts/sanitize_check.sh
+
+      - name: Link check (lychee)
+        uses: lycheeverse/lychee-action@v2
+        with:
+          fail: true
+          args: --exclude-path .git '**/*.md'

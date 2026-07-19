@@ -1,0 +1,48 @@
+{
+  "problem": "need a token-bucket rate limiter for an internal API gateway",
+  "sweep": {
+    "query": "token bucket rate limiter",
+    "lanes_run": ["github", "registry", "scorecard"],
+    "candidates": [
+      {
+        "name": "acme-org/ratelimit-go",
+        "url": "https://github.com/acme-org/ratelimit-go",
+        "source_lane": "github",
+        "description": "Token bucket rate limiter for Go services",
+        "stars": 4200,
+        "last_push": "2026-06-30",
+        "license": "Apache-2.0",
+        "scorecard": {"score": 8.1, "date": "2026-06-15"},
+        "registry_downloads": null
+      },
+      {
+        "name": "someone/twitter-scrape-tool",
+        "url": "https://github.com/someone/twitter-scrape-tool",
+        "source_lane": "github",
+        "description": "Scrapes tweets for research",
+        "stars": 9800,
+        "last_push": "2024-01-02",
+        "license": "MIT",
+        "scorecard": {"score": 3.2, "date": "2025-11-01"},
+        "registry_downloads": null
+      }
+    ],
+    "errors": []
+  },
+  "provenance": {
+    "profiles": [
+      {
+        "login": "acme-maintainer",
+        "name": "Acme Maintainer",
+        "company": "Acme Infra Co.",
+        "created_at": "2019-03-01T00:00:00Z",
+        "followers": 340,
+        "public_repos": 41,
+        "account_age_years": 7.3,
+        "other_notable": [{"name": "bucket-core", "stars": 1200}],
+        "signal": "established-practitioner"
+      }
+    ],
+    "errors": []
+  }
+}
