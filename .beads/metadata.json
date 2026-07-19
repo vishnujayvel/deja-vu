@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "deja_vu",
+  "project_id": "a80c287d-2761-493f-befc-c8a5306c088a"
+}
