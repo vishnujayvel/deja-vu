@@ -103,7 +103,48 @@ def github_lane(query, language, limit, errors):
                         last_push=item.get("pushedAt"),
                         license=lic.get("key") or lic.get("name"),
                     ))
-                return candidates
+                # `gh search repos` ANDs every term across name+description, so a
+                # long natural-language query matches nothing and still exits 0.
+                # Returning here on an empty list is how a hunt silently reports
+                # "no prior art exists" when it really means "query too long".
+                # Verified 2026-07-28: a 9-word query returned [], the same intent
+                # in 2 words returned 4 real hits. Retry progressively shorter
+                # before giving up, and fall through to the REST lane if still dry.
+                if candidates:
+                    return candidates
+                terms = query.split()
+                for n in (4, 3, 2):
+                    if len(terms) <= n:
+                        continue
+                    short = " ".join(terms[:n])
+                    try:
+                        retry_args = [a if a != query else short for a in args]
+                        rp = subprocess.run(retry_args, capture_output=True, text=True, timeout=20)
+                        if rp.returncode == 0 and rp.stdout.strip():
+                            for item in json.loads(rp.stdout):
+                                lic = item.get("license") or {}
+                                candidates.append(empty_candidate(
+                                    name=item.get("fullName"),
+                                    url=item.get("url"),
+                                    source_lane=f"github(narrowed:{n}w)",
+                                    description=item.get("description"),
+                                    stars=item.get("stargazersCount"),
+                                    last_push=item.get("pushedAt"),
+                                    license=lic.get("key") or lic.get("name"),
+                                ))
+                        if candidates:
+                            errors.append(
+                                f"github: full query matched 0 repos; narrowed to '{short}' "
+                                f"and found {len(candidates)}. Broaden or shorten --query."
+                            )
+                            return candidates
+                    except Exception as e:  # noqa: BLE001
+                        errors.append(f"github(narrow-{n}w): {type(e).__name__}: {e}")
+                errors.append(
+                    "github(gh-cli): 0 repos for the full query AND every narrowed "
+                    "retry — falling through to the REST lane. Treat a still-empty "
+                    "result as inconclusive, not as evidence that no prior art exists."
+                )
             if proc.stderr:
                 errors.append(f"github(gh-cli): {proc.stderr.strip()[:200]}")
         except Exception as e:  # noqa: BLE001
