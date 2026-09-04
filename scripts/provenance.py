@@ -1,18 +1,42 @@
 #!/usr/bin/env python3
-"""deja-vu provenance — stage 6b judge (design.md §2.6b).
+"""deja-vu provenance -- stage 6b judge (design.md Section 2.6b).
 
-Stdlib only. No-throw discipline: every network call is wrapped; failures
-are appended to an `errors[]` list and never crash the run. Missing data
-never hard-fails a profile — it degrades to the "unknown-experimental"
-signal instead.
+Pure, deterministic normalizer. This module performs NO network access and
+NO subprocess execution: it never fetches maintainer data itself. The caller
+fetches raw GitHub user/repo data out of band (e.g. via `gh api` or the
+GitHub REST API) and passes it in explicitly -- as a JSON document on stdin
+or via `--input <path>` -- together with an explicit reference timestamp
+(`--now`). Given the same input document and `--now`, the output is always
+identical: no wall-clock or live-network state leaks into the result.
 
-Signal rules (tenure, footprint, org backing):
+No-throw discipline at the process level: a malformed owner entry never
+crashes the run. Instead the caller-supplied identity for a required field
+that is missing or does not parse (for example an unparsable `created_at`,
+or an absent user profile) causes that single record to be REJECTED -- it is
+left out of `profiles` and a reason is appended to `errors[]`. A rejected
+record is never emitted as a plausible-looking profile; degrading a required
+field into a "safe default" would let unverifiable data pass as evidence.
+
+Signal rules (tenure, footprint, org backing), computed only for accepted
+records:
   established-practitioner - account_age_years >= 3 AND
                               (followers >= 50 OR public_repos >= 30 OR company set)
   active-builder           - account_age_years >= 1 AND
                               (followers >= 10 OR public_repos >= 5)
-  unknown-experimental     - everything else, including any profile deja-vu
-                              could not fetch at all.
+  unknown-experimental     - an accepted record whose signal thresholds are
+                              simply not met (this is a scoring outcome, not
+                              a stand-in for missing or malformed data).
+
+Input (single JSON object on stdin, or via --input <path>):
+  {
+    "owners": [
+      {
+        "login": str,                 # required; caller-supplied identity
+        "user": {...} | None,         # required; raw GitHub user API shape
+        "repos": [...] | None         # optional; raw GitHub repos API shape
+      }, ...
+    ]
+  }
 
 Output (single JSON object to stdout):
   {
@@ -31,100 +55,8 @@ Output (single JSON object to stdout):
 
 import argparse
 import json
-import shutil
-import subprocess
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
-
-DEFAULT_HEADERS = {"User-Agent": "deja-vu-provenance/1.0", "Accept": "application/vnd.github+json"}
-
-
-def fetch_json(url, headers=None, timeout=10):
-    req = urllib.request.Request(url, headers=headers or DEFAULT_HEADERS)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = resp.read()
-    return json.loads(body.decode("utf-8"))
-
-
-def safe_fetch_json(url, headers=None, timeout=10):
-    try:
-        return fetch_json(url, headers=headers, timeout=timeout), None
-    except Exception as e:  # noqa: BLE001 - deliberate catch-all, no-throw contract
-        return None, f"{type(e).__name__}: {e}"
-
-
-def _gh_cli_user(login, errors):
-    gh_path = shutil.which("gh")
-    if not gh_path:
-        return None
-    try:
-        proc = subprocess.run(
-            [gh_path, "api", f"users/{login}"],
-            capture_output=True, text=True, timeout=20,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return json.loads(proc.stdout)
-        if proc.stderr:
-            errors.append(f"provenance(gh-cli {login}): {proc.stderr.strip()[:200]}")
-        return None
-    except Exception as e:  # noqa: BLE001
-        errors.append(f"provenance(gh-cli {login}): {type(e).__name__}: {e}")
-        return None
-
-
-def _gh_cli_repos(login, errors):
-    gh_path = shutil.which("gh")
-    if not gh_path:
-        return None
-    try:
-        proc = subprocess.run(
-            [gh_path, "api", f"users/{login}/repos?per_page=100&sort=pushed"],
-            capture_output=True, text=True, timeout=20,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return json.loads(proc.stdout)
-        return None
-    except Exception:  # noqa: BLE001
-        return None
-
-
-def fetch_user(login, errors):
-    data = _gh_cli_user(login, errors)
-    if data is not None:
-        return data
-    url = f"https://api.github.com/users/{urllib.parse.quote(login)}"
-    data, err = safe_fetch_json(url)
-    if err:
-        errors.append(f"provenance(api {login}): {err}")
-        return None
-    return data
-
-
-def fetch_repos(login, errors):
-    data = _gh_cli_repos(login, errors)
-    if data is not None:
-        return data
-    url = f"https://api.github.com/users/{urllib.parse.quote(login)}/repos?per_page=100&sort=pushed"
-    data, err = safe_fetch_json(url)
-    if err:
-        # Non-fatal: other_notable simply comes back empty.
-        errors.append(f"provenance(repos {login}): {err}")
-        return []
-    return data or []
-
-
-def account_age_years(created_at, now=None):
-    if not created_at:
-        return None
-    try:
-        created = datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-    except ValueError:
-        return None
-    now = now or datetime.now(timezone.utc)
-    return round((now - created).days / 365.25, 2)
 
 
 def classify_signal(age_years, followers, public_repos, company):
@@ -139,6 +71,20 @@ def classify_signal(age_years, followers, public_repos, company):
     return "unknown-experimental"
 
 
+def account_age_years(created_at, now):
+    """Return years between created_at and now, or None if created_at is
+    missing or does not parse. Pure and deterministic: takes `now` explicitly
+    rather than reading the wall clock.
+    """
+    if not created_at:
+        return None
+    try:
+        created = datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+    return round((now - created).days / 365.25, 2)
+
+
 def top_notable_repos(repos, n=3):
     scored = [r for r in repos if isinstance(r, dict) and not r.get("fork")]
     scored.sort(key=lambda r: r.get("stargazers_count") or 0, reverse=True)
@@ -148,59 +94,95 @@ def top_notable_repos(repos, n=3):
     ]
 
 
-def build_profile(login, errors, now=None):
-    user = fetch_user(login, errors)
-    if user is None:
-        return {
-            "login": login,
-            "name": None,
-            "company": None,
-            "created_at": None,
-            "followers": None,
-            "public_repos": None,
-            "account_age_years": None,
-            "other_notable": [],
-            "signal": "unknown-experimental",
-        }
+def build_profile(login, user, repos, now):
+    """Normalize one caller-supplied external profile into a validated record.
+
+    `login` is always the caller-supplied identity and is never overridden by
+    externally sourced content (external content is treated as data, not as
+    a source of truth for identity). Returns (profile, None) on success, or
+    (None, reason) when a required field is missing or malformed and the
+    record must be rejected rather than degraded.
+    """
+    if not isinstance(user, dict):
+        return None, f"provenance({login}): rejected -- missing required user profile data"
 
     created_at = user.get("created_at")
-    age = account_age_years(created_at, now=now)
+    age = account_age_years(created_at, now)
+    if age is None:
+        return None, f"provenance({login}): rejected -- missing or malformed required field created_at={created_at!r}"
+
     followers = user.get("followers")
     public_repos = user.get("public_repos")
     company = user.get("company")
-
-    repos = fetch_repos(login, errors)
-    other_notable = top_notable_repos(repos)
+    repos = repos if isinstance(repos, list) else []
 
     return {
-        "login": user.get("login", login),
+        "login": login,
         "name": user.get("name"),
         "company": company,
         "created_at": created_at,
         "followers": followers,
         "public_repos": public_repos,
         "account_age_years": age,
-        "other_notable": other_notable,
+        "other_notable": top_notable_repos(repos),
         "signal": classify_signal(age, followers, public_repos, company),
-    }
+    }, None
 
 
-def run_provenance(owners):
+def run_provenance(owners, now):
+    """owners: iterable of {"login": str, "user": dict|None, "repos": list|None}."""
     errors = []
-    profiles = [build_profile(login, errors) for login in owners]
+    profiles = []
+    for entry in owners:
+        if not isinstance(entry, dict):
+            errors.append(f"provenance: rejected -- owner entry must be an object, got {type(entry).__name__}")
+            continue
+        login = entry.get("login")
+        if not isinstance(login, str) or not login:
+            errors.append("provenance: rejected -- owner entry missing required non-empty 'login' string")
+            continue
+        profile, err = build_profile(login, entry.get("user"), entry.get("repos"), now)
+        if err:
+            errors.append(err)
+            continue
+        profiles.append(profile)
     return {"profiles": profiles, "errors": errors}
 
 
+def _parse_now(value):
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"--now must be UTC ISO-8601 'YYYY-MM-DDTHH:MM:SSZ': {e}") from e
+
+
 def build_arg_parser():
-    p = argparse.ArgumentParser(description="deja-vu provenance judge (design.md §2.6b)")
-    p.add_argument("--owner", action="append", default=[], required=True,
-                   help="GitHub login to profile; repeatable")
+    p = argparse.ArgumentParser(description="deja-vu provenance judge (design.md Section 2.6b)")
+    p.add_argument(
+        "--input", default="-",
+        help="path to the owners JSON document (see module docstring); '-' (default) reads stdin",
+    )
+    p.add_argument(
+        "--now", required=True, type=_parse_now,
+        help="reference timestamp for age calculation, UTC ISO-8601 'YYYY-MM-DDTHH:MM:SSZ' "
+             "(required explicitly so output is deterministic given the same input)",
+    )
     return p
 
 
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
-    result = run_provenance(args.owner)
+    raw = sys.stdin.read() if args.input == "-" else open(args.input, "r", encoding="utf-8").read()
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(json.dumps({"profiles": [], "errors": [f"provenance: rejected -- invalid input JSON: {e}"]}, indent=2))
+        return 1
+    owners = doc.get("owners") if isinstance(doc, dict) else None
+    if not isinstance(owners, list):
+        print(json.dumps({"profiles": [], "errors": ["provenance: rejected -- input must be an object with an 'owners' list"]}, indent=2))
+        return 1
+    result = run_provenance(owners, args.now)
     print(json.dumps(result, indent=2))
     return 0
 

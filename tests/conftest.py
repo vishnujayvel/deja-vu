@@ -49,11 +49,10 @@ def load_fixture_json():
 
 @pytest.fixture
 def no_gh_cli(monkeypatch):
-    """Force every script's shutil.which('gh') to report the CLI absent, so
-    lane code takes the unauthenticated-API fallback path deterministically.
+    """Force sweep.py's shutil.which('gh') to report the CLI absent, so lane
+    code takes the unauthenticated-API fallback path deterministically.
+    (provenance.py performs no subprocess calls at all -- nothing to patch.)
     """
-    import provenance
     import sweep
 
     monkeypatch.setattr(sweep.shutil, "which", lambda _name: None)
-    monkeypatch.setattr(provenance.shutil, "which", lambda _name: None)
