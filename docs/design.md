@@ -196,6 +196,7 @@ conditions use `blocked`; `failed` is irrecoverable and terminal.
 | `awaiting_authority -> decided` | Every component selected for execution has valid authority; rejected or deferred components are explicitly excluded from the executable route while remaining in the packet as evidence |
 | `awaiting_authority -> declined|deferred` | The response identifies the controlled components and packet hash; deferred responses include a wake condition or expiry |
 | `evaluating -> declined` | The need or every feasible route is explicitly rejected with evidence |
+| `evaluating -> deferred` | The decision packet identifies the controlled components requiring deferral, and the response records a wake condition or expiry |
 | `decided|declined|deferred -> recorded` | Human ADR and machine registry record generated from the same terminal packet |
 | `recorded -> observed` | At least one provenance-bearing outcome observation appended |
 | `deferred -> awaiting_authority|evaluating` | The wake condition occurs or a deliberate override records why replanning is safe |
@@ -393,9 +394,9 @@ The record contains:
 
 ```text
 module_path, artifact_sha256, contract_ref, contract_sha256,
-reviewer, launch_envelope_sha256, permission_hash, stdout_sha256,
-result_evidence_sha256, delegate_job_id, round, verdict, findings,
-adjudication
+governing_contract_sha256, reviewer, launch_envelope_sha256, permission_hash,
+stdout_sha256, result_evidence_sha256, delegate_job_id, round, verdict,
+findings, adjudication
 ```
 
 SHA-256 is computed over exact file bytes. The contract digest uses its exact
