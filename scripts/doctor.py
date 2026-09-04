@@ -23,6 +23,22 @@ import sys
 import urllib.request
 
 TIMEOUT = 10
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Local files the Deja Vu skill needs to run at all. Paths are relative to
+# the repo root (the parent of this script's directory).
+REQUIRED_SKILL_FILES = [
+    "SKILL.md",
+    "references/re-problem.md",
+    "references/framing.md",
+    "references/lanes.md",
+    "references/snowball-probe.md",
+    "references/judge.md",
+    "references/record.md",
+    "references/learn.md",
+    "scripts/sweep.py",
+    "scripts/provenance.py",
+]
 
 results = []  # (level, name, detail)
 
@@ -55,6 +71,23 @@ def http_status(url):
         return None
 
 
+def check_deja_vu_skill():
+    """Required: the local Deja Vu skill's own files must exist and be readable."""
+    missing = [p for p in REQUIRED_SKILL_FILES if not os.path.isfile(os.path.join(ROOT, p))]
+    if missing:
+        record("FAIL", "deja-vu-skill", f"missing required file(s): {', '.join(missing)}")
+        return
+    unreadable = [p for p in REQUIRED_SKILL_FILES if not os.access(os.path.join(ROOT, p), os.R_OK)]
+    if unreadable:
+        record("FAIL", "deja-vu-skill", f"unreadable required file(s): {', '.join(unreadable)}")
+        return
+    record(
+        "PASS",
+        "deja-vu-skill",
+        f"{len(REQUIRED_SKILL_FILES)} required file(s) present and readable",
+    )
+
+
 def check_python():
     v = sys.version_info
     if v >= (3, 9):
@@ -64,7 +97,13 @@ def check_python():
 
 
 def check_github_lane():
-    """Required lane: gh CLI authenticated, or unauthenticated API fallback."""
+    """Best-effort lane: gh CLI authenticated, or unauthenticated API fallback.
+
+    Network reachability is not a local invariant -- a transient outage or
+    rate limit doesn't mean the local setup is broken. This lane only ever
+    WARNs so the exit code stays deterministic across repeated runs on an
+    unchanged machine.
+    """
     if shutil.which("gh"):
         code, out = run(["gh", "auth", "status"])
         if code == 0:
@@ -74,12 +113,12 @@ def check_github_lane():
     status = http_status("https://api.github.com/rate_limit")
     if status == 200:
         record(
-            "WARN" if shutil.which("gh") is None else "PASS",
+            "WARN",
             "github-api",
             "unauthenticated GitHub API reachable (low rate limits; install+login gh for full lane)",
         )
     else:
-        record("FAIL", "github-api", f"GitHub API unreachable (status={status})")
+        record("WARN", "github-api", f"GitHub API unreachable (status={status}); github lane degraded")
 
 
 def check_scorecard():
@@ -125,11 +164,20 @@ def check_skills_cli():
     if not shutil.which("npx"):
         record("WARN", "skills-cli", "npx not found -- skills-ecosystem lane unavailable")
         return
-    code, out = run(["npx", "--yes", "skills", "--version"], timeout=60)
+    # --no-install: only resolve a copy already cached by npm/npx. Never
+    # download or execute a package the doctor hasn't seen before -- that
+    # would mutate the npm cache and contradict this script's read-only
+    # contract.
+    code, out = run(["npx", "--no-install", "skills", "--version"], timeout=60)
     if code == 0 and out.strip():
         record("PASS", "skills-cli", f"npx skills v{out.strip().splitlines()[-1]}")
     else:
-        record("WARN", "skills-cli", "npx skills did not resolve -- skills-ecosystem lane degraded")
+        record(
+            "WARN",
+            "skills-cli",
+            "npx skills not cached locally -- skills-ecosystem lane degraded "
+            "(doctor won't install it; run `npx --yes skills --version` yourself to cache it)",
+        )
 
 
 def check_last30days():
@@ -146,6 +194,7 @@ def check_last30days():
 
 def main():
     check_python()
+    check_deja_vu_skill()
     check_github_lane()
     check_scorecard()
     check_grep_app()
