@@ -2,7 +2,7 @@
 # deja-vu sanitize_check.sh — public-repo hygiene gate (docs/design.md distribution work).
 #
 # Fails (nonzero exit) if the tracked tree contains:
-#   1. a machine-specific /Users/<name>/ path (docs/scripts should use $HOME or a
+#   1. a machine-specific /Users/<name> path (docs/scripts should use $HOME or a
 #      repo-relative path instead — those are NOT flagged by this pattern)
 #   2. an email address
 #   3. any literal string listed in .sanitize-denylist, if that file is present
@@ -35,38 +35,64 @@ FOUND=0
 
 echo "deja-vu sanitize_check: scanning $REPO_ROOT"
 
+# Runs `grep "$@" -- "${SCAN_FILES[@]}"` and fails the gate closed on either
+# outcome that isn't a clean "no match": a real hit (grep exit 0), or a grep
+# error such as a dangling git-index entry whose file is missing on disk
+# (grep exit >=2). Treating an error the same as "no match" would let an
+# unscanned file silently pass. $1 names the check for the failure message.
+scan_for() {
+  local label="$1"
+  shift
+  [ "${#SCAN_FILES[@]}" -eq 0 ] && return 0
+  local rc=0
+  grep "$@" -- "${SCAN_FILES[@]}" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: found $label" >&2
+    FOUND=1
+  elif [ "$rc" -ge 2 ]; then
+    echo "FAIL: grep error while scanning for $label (exit $rc) — treating as unscanned" >&2
+    FOUND=1
+  fi
+}
+
+# Enumerate the scan set via a plain redirect (not process substitution) so
+# a git failure is caught by its own exit status instead of silently leaving
+# SCAN_FILES empty — an empty set would otherwise make every check below a
+# no-op and let the script print OK without having scanned anything.
+SCAN_LIST_FILE="$(mktemp)"
+trap 'rm -f "$SCAN_LIST_FILE"' EXIT
+if ! git ls-files --cached --others --exclude-standard -z > "$SCAN_LIST_FILE"; then
+  echo "FAIL: git ls-files failed to enumerate the tracked tree — refusing to report a false OK" >&2
+  exit 1
+fi
+
 SCAN_FILES=()
 while IFS= read -r -d '' f; do
   [ "$f" = "$DENYLIST_BASENAME" ] && continue
   SCAN_FILES+=("$f")
-done < <(git ls-files --cached --others --exclude-standard -z)
+done < "$SCAN_LIST_FILE"
 
-# 1. Machine-user paths: a literal /Users/<name>/ segment (placeholder-style
-#    references like "/Users/<name>/" in this comment intentionally do not
-#    match, since angle brackets are not in the allowed username character set).
-if [ "${#SCAN_FILES[@]}" -gt 0 ] && grep -InE '/Users/[A-Za-z0-9._-]+/' -- "${SCAN_FILES[@]}" 2>/dev/null; then
-  echo "FAIL: found a machine-specific /Users/<name>/ path — use \$HOME or a repo-relative path" >&2
-  FOUND=1
-fi
+# 1. Machine-user paths: a literal /Users/<name> segment, with or without a
+#    trailing slash (placeholder-style references like "/Users/<name>/" in
+#    this comment intentionally do not match, since angle brackets are not
+#    in the allowed username character set).
+scan_for "a machine-specific /Users/<name> path — use \$HOME or a repo-relative path" -InE '/Users/[A-Za-z0-9._-]+'
 
 # 2. Email addresses.
-if [ "${#SCAN_FILES[@]}" -gt 0 ] && grep -InE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' -- "${SCAN_FILES[@]}" 2>/dev/null; then
-  echo "FAIL: found an email address" >&2
-  FOUND=1
-fi
+scan_for "an email address" -InE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
 
 # 3. Private denylist — optional. Absent in a fresh public clone; fall back
 #    silently to the generic checks above when it's missing.
 if [ -f "$DENYLIST_FILE" ]; then
-  while IFS= read -r pattern; do
+  # `|| [ -n "$pattern" ]` keeps the loop body running for a final line that
+  # has no trailing newline — plain `read` returns nonzero there, and without
+  # this the last denylist pattern would never be scanned.
+  while IFS= read -r pattern || [ -n "$pattern" ]; do
     [ -z "$pattern" ] && continue
     case "$pattern" in
       \#*) continue ;;
     esac
-    if [ "${#SCAN_FILES[@]}" -gt 0 ] && grep -InF -- "$pattern" "${SCAN_FILES[@]}" 2>/dev/null; then
-      echo "FAIL: found denylisted string: $pattern" >&2
-      FOUND=1
-    fi
+    scan_for "denylisted string: $pattern" -InF "$pattern"
   done < "$DENYLIST_FILE"
 else
   echo "note: $DENYLIST_BASENAME not present — falling back to generic patterns only"
