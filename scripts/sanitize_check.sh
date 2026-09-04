@@ -12,17 +12,9 @@
 # not have this file at all, so step 3 is skipped gracefully and only the generic
 # patterns (1) and (2) run. This script must succeed either way.
 #
-# Scanned set: git-tracked files plus untracked-but-not-gitignored files
-# (`git ls-files --cached --others --exclude-standard`). This automatically
-# skips anything .gitignore covers (.beads/, .scratch/, .gc/, .claude/skills/,
-# *.gate.lock, ...) without needing to enumerate exclusions here, and it never
-# includes a `.git` entry — in a plain clone that's a directory git never
-# tracks, and in a `git worktree` checkout it's a machine-path-bearing pointer
-# *file* that a naive `grep -r --exclude-dir=.git` would still walk into.
-# This script's own denylist file is excluded explicitly since it legitimately
-# contains the strings being searched for and is gitignored on purpose (so it
-# would already be skipped by the git-file-list scan, but the exclude below is
-# kept as defense in depth in case it's ever committed by mistake).
+# Excluded from every check: .git/, .beads/, private gitignored .scratch/, and
+# this script's own denylist file (which legitimately contains the strings being
+# searched for).
 
 set -euo pipefail
 
@@ -31,26 +23,21 @@ cd "$REPO_ROOT"
 
 DENYLIST_FILE="$REPO_ROOT/.sanitize-denylist"
 DENYLIST_BASENAME="$(basename "$DENYLIST_FILE")"
+GREP_COMMON=(-rIn --exclude-dir=.git --exclude-dir=.beads --exclude-dir=.scratch --exclude="$DENYLIST_BASENAME")
 FOUND=0
 
 echo "deja-vu sanitize_check: scanning $REPO_ROOT"
 
-SCAN_FILES=()
-while IFS= read -r -d '' f; do
-  [ "$f" = "$DENYLIST_BASENAME" ] && continue
-  SCAN_FILES+=("$f")
-done < <(git ls-files --cached --others --exclude-standard -z)
-
 # 1. Machine-user paths: a literal /Users/<name>/ segment (placeholder-style
 #    references like "/Users/<name>/" in this comment intentionally do not
 #    match, since angle brackets are not in the allowed username character set).
-if [ "${#SCAN_FILES[@]}" -gt 0 ] && grep -InE '/Users/[A-Za-z0-9._-]+/' -- "${SCAN_FILES[@]}" 2>/dev/null; then
+if grep "${GREP_COMMON[@]}" -E '/Users/[A-Za-z0-9._-]+/' . 2>/dev/null; then
   echo "FAIL: found a machine-specific /Users/<name>/ path — use \$HOME or a repo-relative path" >&2
   FOUND=1
 fi
 
 # 2. Email addresses.
-if [ "${#SCAN_FILES[@]}" -gt 0 ] && grep -InE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' -- "${SCAN_FILES[@]}" 2>/dev/null; then
+if grep "${GREP_COMMON[@]}" -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' . 2>/dev/null; then
   echo "FAIL: found an email address" >&2
   FOUND=1
 fi
@@ -63,7 +50,7 @@ if [ -f "$DENYLIST_FILE" ]; then
     case "$pattern" in
       \#*) continue ;;
     esac
-    if [ "${#SCAN_FILES[@]}" -gt 0 ] && grep -InF -- "$pattern" "${SCAN_FILES[@]}" 2>/dev/null; then
+    if grep "${GREP_COMMON[@]}" -F -- "$pattern" . 2>/dev/null; then
       echo "FAIL: found denylisted string: $pattern" >&2
       FOUND=1
     fi
