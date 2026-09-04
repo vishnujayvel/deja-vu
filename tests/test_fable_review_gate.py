@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import jsonschema
 import pytest
 
 from scripts import fable_review_gate
@@ -407,6 +408,81 @@ def test_review_record_schema_encodes_the_gate_contract():
     }
     finding_schema = schema["properties"]["findings"]["items"]
     assert {"evidence", "contract_clause"} <= set(finding_schema["required"])
+
+
+def _load_review_record_schema() -> dict:
+    schema_path = (
+        Path(fable_review_gate.__file__).resolve().parents[1]
+        / "schemas"
+        / "fable-review-record.schema.json"
+    )
+    return json.loads(schema_path.read_text())
+
+
+def _base_review_record(**overrides) -> dict:
+    sha = "a" * 64
+    record = {
+        "schema_version": "deja-vu.fable-review/v1",
+        "review_id": "review-1",
+        "module_path": "scripts/doctor.py",
+        "artifact_sha256": sha,
+        "contract_sha256": sha,
+        "governing_contract_sha256": sha,
+        "contract_ref": "contracts/module-contracts.json",
+        "implementation_bead": "deja-vu-v2.27",
+        "delegate_job_id": "job-1",
+        "launch_envelope_sha256": sha,
+        "permission_hash": sha,
+        "stdout_sha256": sha,
+        "result_evidence_sha256": sha,
+        "reviewer": {
+            "family": "claude",
+            "model": "claude-fable-5",
+            "target": "deja-vu/claude-fable-review",
+        },
+        "round": 1,
+        "verdict": "pass",
+        "findings": [],
+        "adjudication": None,
+    }
+    record.update(overrides)
+    return record
+
+
+def test_review_record_schema_is_valid_draft_2020_12():
+    jsonschema.Draft202012Validator.check_schema(_load_review_record_schema())
+
+
+def test_review_record_schema_allows_null_adjudication_for_pass():
+    schema = _load_review_record_schema()
+    jsonschema.validate(_base_review_record(verdict="pass"), schema)
+
+
+@pytest.mark.parametrize("verdict", ["fix-first", "human-override"])
+def test_review_record_schema_rejects_null_adjudication_for_non_clean_verdict(
+    verdict,
+):
+    schema = _load_review_record_schema()
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            _base_review_record(verdict=verdict, adjudication=None), schema
+        )
+
+
+@pytest.mark.parametrize("verdict", ["fix-first", "human-override"])
+def test_review_record_schema_accepts_ed25519_envelope_for_non_clean_verdict(
+    verdict,
+):
+    schema = _load_review_record_schema()
+    record = _base_review_record(
+        verdict=verdict,
+        adjudication={
+            "algorithm": "ed25519",
+            "key_id": "key-1",
+            "signature": "c2ln",
+        },
+    )
+    jsonschema.validate(record, schema)
 
 
 def test_module_contract_schema_encodes_canonical_contract_map():

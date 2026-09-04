@@ -60,7 +60,8 @@
     },
     "delegate_job_id": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "Identifier of the Direct job that executed this review, binding the record to the durable job evidence required by the module contract."
     },
     "launch_envelope_sha256": {
       "type": "string",
@@ -195,5 +196,25 @@
         }
       ]
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["verdict"],
+        "properties": {
+          "verdict": {
+            "enum": ["fix-first", "human-override"]
+          }
+        }
+      },
+      "then": {
+        "required": ["adjudication"],
+        "properties": {
+          "adjudication": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  ]
 }
