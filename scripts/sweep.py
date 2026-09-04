@@ -31,6 +31,7 @@ No composite score is ever emitted (design.md §5: per-dimension only).
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -41,6 +42,36 @@ import urllib.request
 
 DEFAULT_HEADERS = {"User-Agent": "deja-vu-sweep/1.0"}
 ALL_LANES = ["github", "registry", "grep", "scorecard"]
+
+# A remote JSON response is untrusted data: it may not have the dict shape
+# every lane assumes (e.g. a top-level array, or list elements that are
+# strings/numbers instead of objects). These helpers narrow any such shape
+# down to something `.get()` can be called on safely, so a hostile or
+# malformed payload degrades to an empty result instead of an AttributeError
+# that would crash the sweep (contradicts the module's no-throw discipline).
+def _as_dict(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _dict_items(seq):
+    if not isinstance(seq, list):
+        return []
+    return [item for item in seq if isinstance(item, dict)]
+
+
+# GitHub owner/repo names that are safe to interpolate into a request path.
+# Rejects anything that isn't exactly two "owner" and "repo" segments made of
+# the charset GitHub actually allows, and specifically rejects a segment that
+# is "." or ".." -- the shape a path-traversal payload needs to rewrite the
+# request path (see scorecard_lane).
+_GITHUB_NAME_SEGMENT_RE = re.compile(r"^(?!\.{1,2}$)[A-Za-z0-9._-]+$")
+
+
+def _is_safe_github_name(name):
+    if not isinstance(name, str):
+        return False
+    parts = name.split("/")
+    return len(parts) == 2 and all(_GITHUB_NAME_SEGMENT_RE.match(p) for p in parts)
 
 
 def empty_candidate(**overrides):
@@ -93,12 +124,16 @@ def github_lane(query, language, limit, errors):
     if gh_path:
         try:
             args = [
-                gh_path, "search", "repos", query,
+                gh_path, "search", "repos",
                 "--limit", str(limit),
                 "--json", "fullName,description,stargazersCount,url,pushedAt,license",
             ]
             if language:
                 args += ["--language", language]
+            # '--' ends flag parsing so a --query value that begins with '-'
+            # (e.g. '--web', which would open a browser) is consumed as the
+            # search term rather than as a gh CLI flag.
+            args += ["--", query]
             proc = subprocess.run(args, capture_output=True, text=True, timeout=20)
             if proc.returncode == 0 and proc.stdout.strip():
                 items = json.loads(proc.stdout)
@@ -128,12 +163,13 @@ def github_lane(query, language, limit, errors):
                         continue
                     short = " ".join(terms[:n])
                     try:
-                        # Substitute by the query's known positional index
-                        # (args[3]), not by value equality — an equality
-                        # substitution would also clobber --language or
-                        # --limit if either happened to equal the query text.
+                        # Substitute the trailing positional (the query,
+                        # placed last after '--'), not by value equality — an
+                        # equality substitution would also clobber --language
+                        # or --limit if either happened to equal the query
+                        # text.
                         retry_args = list(args)
-                        retry_args[3] = short
+                        retry_args[-1] = short
                         rp = subprocess.run(retry_args, capture_output=True, text=True, timeout=20)
                         if rp.returncode == 0 and rp.stdout.strip():
                             for item in json.loads(rp.stdout):
@@ -178,8 +214,8 @@ def github_lane(query, language, limit, errors):
     if err:
         errors.append(f"github(api): {err}")
         return candidates
-    for item in (data or {}).get("items", [])[:limit]:
-        lic = item.get("license") or {}
+    for item in _dict_items(_as_dict(data).get("items"))[:limit]:
+        lic = _as_dict(item.get("license"))
         candidates.append(empty_candidate(
             name=item.get("full_name"),
             url=item.get("html_url"),
@@ -201,9 +237,9 @@ def _npm_search(query, limit, errors):
     if err:
         errors.append(f"registry(npm): {err}")
         return out
-    for obj in (data or {}).get("objects", [])[:limit]:
-        pkg = obj.get("package", {})
-        links = pkg.get("links", {})
+    for obj in _dict_items(_as_dict(data).get("objects"))[:limit]:
+        pkg = _as_dict(obj.get("package"))
+        links = _as_dict(pkg.get("links"))
         out.append(empty_candidate(
             name=pkg.get("name"),
             url=links.get("npm") or links.get("repository"),
@@ -233,7 +269,7 @@ def _pypi_search(query, limit, errors):
         if "404" not in err:
             errors.append(f"registry(pypi): {err}")
         return out
-    info = (data or {}).get("info", {})
+    info = _as_dict(_as_dict(data).get("info"))
     out.append(empty_candidate(
         name=info.get("name"),
         url=info.get("project_url") or info.get("package_url"),
@@ -251,7 +287,7 @@ def _crates_search(query, limit, errors):
     if err:
         errors.append(f"registry(crates): {err}")
         return out
-    for c in (data or {}).get("crates", [])[:limit]:
+    for c in _dict_items(_as_dict(data).get("crates"))[:limit]:
         out.append(empty_candidate(
             name=c.get("name"),
             url=f"https://crates.io/crates/{c.get('name')}" if c.get("name") else None,
@@ -345,10 +381,16 @@ def scorecard_lane(candidates, errors):
         source_lane = c.get("source_lane") or ""
         if not source_lane.startswith("github") or not c.get("name"):
             continue
-        # c['name'] is untrusted (from GitHub search / gh CLI output) — quote
-        # it before interpolating into the request path so a hostile name
-        # (containing '../', '?', '#', or whitespace) can't rewrite the
-        # request path/query.
+        # c['name'] is untrusted (from GitHub search / gh CLI output).
+        # urllib.parse.quote() never encodes '.', so a hostile name
+        # containing a '../' segment would pass through quoting unchanged
+        # and rewrite the request path. Validate the shape is exactly
+        # "owner/repo" in GitHub's allowed charset, with no '.' / '..'
+        # segment, before it's ever interpolated into the URL.
+        if not _is_safe_github_name(c["name"]):
+            errors.append(f"scorecard: skipped unsafe candidate name {c['name'][:80]!r}")
+            c["scorecard"] = None
+            continue
         url = f"https://api.securityscorecards.dev/projects/github.com/{urllib.parse.quote(c['name'], safe='/')}"
         data, err = safe_fetch_json(url)
         if err:
@@ -357,9 +399,10 @@ def scorecard_lane(candidates, errors):
                 errors.append(f"scorecard({c['name']}): {err}")
             c["scorecard"] = None
             continue
+        data = _as_dict(data)
         c["scorecard"] = {
-            "score": (data or {}).get("score"),
-            "date": (data or {}).get("date"),
+            "score": data.get("score"),
+            "date": data.get("date"),
         }
     return candidates
 
