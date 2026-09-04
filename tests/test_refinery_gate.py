@@ -688,3 +688,115 @@ def test_check_final_coverage_allows_when_fully_covered(tmp_path, monkeypatch):
 
     assert ok is True
     assert reason == ""
+
+
+# --- round-2 finding 1: closed allowlist for non-refinery identities -------
+
+
+@pytest.mark.parametrize(
+    "agent",
+    [
+        "deja-vu/gastown.polecat",
+        "deja-vu/gastown.furiosa",  # real per-instance polecat alias
+        "deja-vu/gastown.vg-1jp",
+    ],
+)
+def test_classify_gc_agent_recognizes_polecat_aliases_as_other(agent):
+    assert refinery_gate.classify_gc_agent(agent) == "other"
+
+
+@pytest.mark.parametrize(
+    "agent",
+    [
+        "totally-bogus",
+        "rig/gastown.notarole",
+        "deja-vu/gastown.witness",
+        "deja-vu/gastown.mayor",
+        "deja-vu/gastown.deacon",
+        "deja-vu/gastown.",
+        "other-rig/gastown.polecat",
+    ],
+)
+def test_classify_gc_agent_refuses_unrecognized_identities_as_unknown(agent):
+    """Round-2 finding 1: only a polecat-shaped identity for this rig is
+    "other" (skip); a reserved role literal, another rig, or an unparseable
+    value must all classify as "unknown" (refuse) instead."""
+    assert refinery_gate.classify_gc_agent(agent) == "unknown"
+
+
+def test_skip_when_gc_agent_is_a_polecat_alias_not_the_literal_word(
+    tmp_path, monkeypatch, capsys
+):
+    """Real polecat sessions carry a per-instance alias (e.g. "furiosa"), not
+    the literal string "polecat" -- pin that the closed allowlist recognizes
+    the shape, not a hardcoded name."""
+    monkeypatch.setenv("GC_AGENT", "deja-vu/gastown.furiosa")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("must not run any subprocess when skipping")
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", forbidden)
+
+    code = refinery_gate.main(["--root", str(tmp_path)])
+
+    assert code == 0
+    assert "REFINERY_GATE: skip" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "agent",
+    [
+        "totally-bogus",
+        "deja-vu/gastown.witness",
+        "deja-vu/gastown.mayor",
+        "deja-vu/gastown.deacon",
+        "other-rig/gastown.polecat",
+    ],
+)
+def test_refuse_when_gc_agent_is_unrecognized_not_silently_skipped(
+    tmp_path, monkeypatch, capsys, agent
+):
+    """Round-2 finding 1: an identity that is neither the refinery nor a
+    recognized non-refinery pattern must refuse, not skip with exit 0 --
+    previously any non-empty trailing token classified as a generic "other"
+    role and skipped past the gate."""
+    monkeypatch.setenv("GC_AGENT", agent)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("must not run any subprocess when identity is unknown")
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", forbidden)
+
+    code = refinery_gate.main(["--root", str(tmp_path)])
+
+    assert code == 1
+    assert "REFINERY_GATE: refuse reason=identity-unknown" in capsys.readouterr().out
+
+
+# --- round-2 finding 2: usage errors print the REFINERY_GATE line ----------
+
+
+def test_usage_error_on_unrecognized_flag_prints_refinery_gate_line(capsys):
+    code = refinery_gate.main(["--not-a-real-flag"])
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "REFINERY_GATE: refuse reason=usage" in out
+
+
+def test_usage_error_on_missing_option_value_prints_refinery_gate_line(capsys):
+    code = refinery_gate.main(["--root"])  # --root requires a value
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "REFINERY_GATE: refuse reason=usage" in out
+
+
+def test_help_flag_exits_cleanly_without_usage_refusal(capsys):
+    """A clean --help exit (code 0) is not a usage error and must not be
+    swallowed into a REFINERY_GATE: refuse line."""
+    with pytest.raises(SystemExit) as excinfo:
+        refinery_gate.main(["--help"])
+
+    assert excinfo.value.code == 0
+    assert "REFINERY_GATE: refuse reason=usage" not in capsys.readouterr().out
