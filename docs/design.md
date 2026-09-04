@@ -394,7 +394,7 @@ The record contains:
 
 ```text
 module_path, artifact_sha256, contract_ref, contract_sha256,
-governing_contract_sha256, reviewer, launch_envelope_sha256, permission_hash,
+governing_contract_sha256, reviewer, launch_envelope_sha256,
 stdout_sha256, result_evidence_sha256, delegate_job_id, round, verdict,
 findings, adjudication
 ```
