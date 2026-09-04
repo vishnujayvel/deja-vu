@@ -389,7 +389,6 @@ def test_review_record_schema_encodes_the_gate_contract():
         "implementation_bead",
         "delegate_job_id",
         "launch_envelope_sha256",
-        "permission_hash",
         "stdout_sha256",
         "result_evidence_sha256",
         "reviewer",
@@ -401,6 +400,7 @@ def test_review_record_schema_encodes_the_gate_contract():
     assert schema["properties"]["reviewer"]["properties"]["model"]["const"] == (
         "claude-fable-5"
     )
+    assert "permission_hash" not in schema["properties"]
     assert "permission_attestation" not in schema["properties"]
     assert "permission_envelope" not in schema["properties"]
     assert schema["properties"]["adjudication"]["oneOf"][0] == {
@@ -432,7 +432,6 @@ def _base_review_record(**overrides) -> dict:
         "implementation_bead": "deja-vu-v2.27",
         "delegate_job_id": "job-1",
         "launch_envelope_sha256": sha,
-        "permission_hash": sha,
         "stdout_sha256": sha,
         "result_evidence_sha256": sha,
         "reviewer": {
@@ -483,6 +482,28 @@ def test_review_record_schema_accepts_ed25519_envelope_for_non_clean_verdict(
         },
     )
     jsonschema.validate(record, schema)
+
+
+def test_review_record_schema_rejects_self_attested_permission_hash():
+    schema = _load_review_record_schema()
+    record = _base_review_record()
+    record["permission_hash"] = "a" * 64
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(record, schema)
+
+
+def test_review_record_schema_rejects_non_base64_adjudication_signature():
+    schema = _load_review_record_schema()
+    record = _base_review_record(
+        verdict="fix-first",
+        adjudication={
+            "algorithm": "ed25519",
+            "key_id": "key-1",
+            "signature": "!!!",
+        },
+    )
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(record, schema)
 
 
 def test_module_contract_schema_encodes_canonical_contract_map():
