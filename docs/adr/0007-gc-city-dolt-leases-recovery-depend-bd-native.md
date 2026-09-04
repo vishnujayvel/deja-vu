@@ -6,7 +6,7 @@
 
 ## Context / problem (solution-vocabulary-free)
 
-Gas City rig `vishnu-city` (`/Users/vishnu/vishnu-city`) hit disk exhaustion (97% full,
+Gas City rig `vishnu-city` (`$HOME/vishnu-city`) hit disk exhaustion (97% full,
 15 GiB free), traced to un-reaped polecat worktrees under `.gc/worktrees` (15 GB total,
 13 GB in for-us, ~600 MB node_modules each). `auto_reap_closed_bead_worktrees` (enabled
 2026-07-20 per ADR-0002, `city.toml:147`) only reaps via the daemon on bead-close — which

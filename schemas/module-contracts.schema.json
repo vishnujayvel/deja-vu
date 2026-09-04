@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deja-vu.local/schemas/module-contracts/v1",
+  "title": "Deja Vu governed module contracts",
+  "description": "Canonical adversarial-review contracts for executable and public-contract modules.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "modules"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "deja-vu.module-contracts/v1"
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "contract"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?:SKILL\\.md|docs/design\\.md|evals/run_evals\\.py|(?:scripts|src|deja_vu)/(?:[^/]+/)*[^/]+\\.(?:py|sh)|(?:schemas|contracts|policy)/(?:[^/]+/)*[^/]+\\.json)$"
+          },
+          "contract": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

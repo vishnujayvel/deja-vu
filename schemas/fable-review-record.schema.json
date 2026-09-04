@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deja-vu.local/schemas/fable-review-record/v1",
+  "title": "Deja Vu Claude Fable 5 module review",
+  "description": "Fresh-context adversarial review evidence for one executable or public-contract module at one artifact hash.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "review_id",
+    "module_path",
+    "artifact_sha256",
+    "contract_sha256",
+    "governing_contract_sha256",
+    "contract_ref",
+    "implementation_bead",
+    "delegate_job_id",
+    "launch_envelope_sha256",
+    "permission_hash",
+    "stdout_sha256",
+    "result_evidence_sha256",
+    "reviewer",
+    "round",
+    "verdict",
+    "findings",
+    "adjudication"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "deja-vu.fable-review/v1"
+    },
+    "review_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "module_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:SKILL\\.md|docs/design\\.md|evals/run_evals\\.py|(?:scripts|src|deja_vu)/(?:[^/]+/)*[^/]+\\.(?:py|sh)|(?:schemas|contracts|policy)/(?:[^/]+/)*[^/]+\\.json)$"
+    },
+    "artifact_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "contract_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "governing_contract_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "contract_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "implementation_bead": {
+      "type": "string",
+      "minLength": 1
+    },
+    "delegate_job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "launch_envelope_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "permission_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "stdout_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "result_evidence_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "model",
+        "target"
+      ],
+      "properties": {
+        "family": {
+          "const": "claude"
+        },
+        "model": {
+          "const": "claude-fable-5"
+        },
+        "target": {
+          "const": "deja-vu/claude-fable-review"
+        }
+      }
+    },
+    "round": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fix-first",
+        "human-override"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "finding_id",
+          "severity",
+          "summary",
+          "evidence",
+          "contract_clause",
+          "classification",
+          "resolution"
+        ],
+        "properties": {
+          "finding_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "trivial"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contract_clause": {
+            "type": "string",
+            "minLength": 1
+          },
+          "classification": {
+            "enum": [
+              "contract-misread",
+              "actionable",
+              "accepted-trade-off",
+              "noise"
+            ]
+          },
+          "resolution": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "adjudication": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "algorithm",
+            "key_id",
+            "signature"
+          ],
+          "properties": {
+            "algorithm": {
+              "const": "ed25519"
+            },
+            "key_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "signature": {
+              "type": "string",
+              "minLength": 1,
+              "contentEncoding": "base64"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

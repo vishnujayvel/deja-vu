@@ -1,3 +1,6 @@
+issue_prefix: deja-vu
+issue-prefix: deja-vu
+
 # Beads Configuration File
 # This file configures default behavior for all bd commands in this repository
 # All settings can also be set via environment variables (BD_* prefix)
@@ -55,3 +58,5 @@
 # - github.token    → use GITHUB_TOKEN env var instead
 
 sync.remote: "git+https://github.com/vishnujayvel/deja-vu.git"
+validation:
+    on-create: warn

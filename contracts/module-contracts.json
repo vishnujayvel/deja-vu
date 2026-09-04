@@ -1,0 +1,53 @@
+{
+  "schema_version": "deja-vu.module-contracts/v1",
+  "modules": [
+    {
+      "path": "SKILL.md",
+      "contract": "Define the Deja Vu prior-art workflow as a bounded, evidence-first decision protocol. Trigger before commodity custom builds, keep evidence untrusted, preserve explicit uncertainty, require authority before execution, and never silently broaden scope or perform remote writes."
+    },
+    {
+      "path": "contracts/module-contracts.json",
+      "contract": "Provide exactly one non-empty canonical review contract for every module discovered by the Fable gate. Use schema deja-vu.module-contracts/v1, reject duplicate paths in the loader, and make contract changes invalidate prior reviews."
+    },
+    {
+      "path": "docs/design.md",
+      "contract": "Define the canonical P1 system boundary, abstraction layers, lifecycle, evidence semantics, authority model, privacy boundary, learning controls, review gate, and release criteria without circular hashes, forgeable authority, hidden host dependencies, or claims stronger than the enforceable contracts. Clearly distinguish the observed baseline from target behavior."
+    },
+    {
+      "path": "evals/run_evals.py",
+      "contract": "Run Deja Vu trigger and verdict fixtures deterministically without network access or workspace mutation. Fail nonzero for any fixture mismatch and report enough local context to identify the failing case."
+    },
+    {
+      "path": "schemas/fable-review-record.schema.json",
+      "contract": "Describe one fresh Claude Fable 5 adversarial review bound to a module, artifact, decoded contract, governing contract, implementation Bead, Direct job, protected launcher evidence, output, and result-evidence digest. Reject unknown fields, preserve typed findings, and require an Ed25519 adjudication envelope for any non-clean release disposition without copying forgeable permission claims into the record."
+    },
+    {
+      "path": "schemas/module-contracts.schema.json",
+      "contract": "Define a closed JSON shape for the versioned module-contract map. Require a path and non-empty contract for each entry and constrain paths to the same governed module roots as the gate."
+    },
+    {
+      "path": "scripts/doctor.py",
+      "contract": "Diagnose whether the local Deja Vu skill and its required files are usable without changing project state. Emit actionable, deterministic checks and return nonzero when a required invariant fails."
+    },
+    {
+      "path": "scripts/fable_review_gate.py",
+      "contract": "Report deterministic local coverage diagnostics for every governed executable or public-contract module while refusing to authorize release from self-authored Beads or JSON metadata. Bind diagnostics to exact artifact, decoded-contract, and governing-contract hashes; reject symlinks and unsafe paths; load only the canonical repository contract map; and leave final eligibility to the pinned external verifier."
+    },
+    {
+      "path": "scripts/prepare_fable_review.py",
+      "contract": "Prepare exactly one fresh-context adversarial review from a governed module's exact UTF-8 artifact bytes and canonical project-owned contract. Put only the bounded untrusted artifact-and-contract payload on stdin, select the launcher-owned deja-vu/claude-fable-review target, emit the launcher's required ISO-8601 created_at value, bind sealed path and job identities to the artifact, governing-contract, review-round, and bounded transport-attempt identities, keep transport retries from changing prompt bytes or consuming a review round, create immutable private files under repository .scratch with no-follow semantics, preserve idempotent preparation for identical inputs, report separate shell-safe exact validation and authorized-submit commands, and never execute either command. Reject missing contracts, unsafe or ungoverned paths, symlinks, invalid rounds or transport attempts, oversized artifacts, undecodable content, state-path escapes, and conflicting outputs."
+    },
+    {
+      "path": "scripts/provenance.py",
+      "contract": "Normalize and validate provenance records deterministically so evidence remains attributable and auditable. Treat external content as data, reject malformed required fields, and avoid network access or state mutation beyond explicit output requested by the caller."
+    },
+    {
+      "path": "scripts/sanitize_check.sh",
+      "contract": "Scan governed Deja Vu artifacts for secrets, machine-specific paths, and unsafe publication residue using deterministic local checks. Produce no workspace mutations and return nonzero when sanitization fails."
+    },
+    {
+      "path": "scripts/sweep.py",
+      "contract": "Perform a bounded, deterministic prior-art sweep over explicit inputs and budgets. Preserve source provenance and uncertainty, enforce caps, treat retrieved content as untrusted data, and avoid unauthorized execution or remote mutation."
+    }
+  ]
+}

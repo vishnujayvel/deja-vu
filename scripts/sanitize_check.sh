@@ -12,8 +12,9 @@
 # not have this file at all, so step 3 is skipped gracefully and only the generic
 # patterns (1) and (2) run. This script must succeed either way.
 #
-# Excluded from every check: .git/, .beads/, and this script's own denylist file
-# (which legitimately contains the strings being searched for).
+# Excluded from every check: .git/, .beads/, private gitignored .scratch/, and
+# this script's own denylist file (which legitimately contains the strings being
+# searched for).
 
 set -euo pipefail
 
@@ -22,7 +23,7 @@ cd "$REPO_ROOT"
 
 DENYLIST_FILE="$REPO_ROOT/.sanitize-denylist"
 DENYLIST_BASENAME="$(basename "$DENYLIST_FILE")"
-GREP_COMMON=(-rIn --exclude-dir=.git --exclude-dir=.beads --exclude="$DENYLIST_BASENAME")
+GREP_COMMON=(-rIn --exclude-dir=.git --exclude-dir=.beads --exclude-dir=.scratch --exclude="$DENYLIST_BASENAME")
 FOUND=0
 
 echo "deja-vu sanitize_check: scanning $REPO_ROOT"
