@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import json
 
 import pytest
 
@@ -174,3 +175,114 @@ def test_parse_now_accepts_utc_iso8601():
 def test_parse_now_rejects_malformed_timestamp():
     with pytest.raises(argparse.ArgumentTypeError):
         provenance._parse_now("not-a-timestamp")
+
+
+# --------------------------------------- round-2 findings: type validation ---
+
+def test_build_profile_rejects_non_numeric_followers_instead_of_crashing():
+    # A string "followers" value used to crash classify_signal's `>= 50`
+    # comparison with an uncaught TypeError instead of rejecting the record.
+    user = {"created_at": "2016-01-01T00:00:00Z", "followers": "50", "public_repos": 10}
+
+    profile, err = provenance.build_profile("whoever", user, [], now=NOW)
+
+    assert profile is None
+    assert err is not None
+    assert "followers" in err and "malformed" in err
+
+
+def test_build_profile_rejects_non_numeric_public_repos_instead_of_crashing():
+    user = {"created_at": "2016-01-01T00:00:00Z", "followers": 10, "public_repos": {"x": 1}}
+
+    profile, err = provenance.build_profile("whoever", user, [], now=NOW)
+
+    assert profile is None
+    assert "public_repos" in err and "malformed" in err
+
+
+def test_build_profile_rejects_boolean_followers():
+    # bool is a subclass of int in Python; True/False are not plausible counts.
+    user = {"created_at": "2016-01-01T00:00:00Z", "followers": True, "public_repos": 10}
+
+    profile, err = provenance.build_profile("whoever", user, [], now=NOW)
+
+    assert profile is None
+    assert "followers" in err
+
+
+def test_build_profile_rejects_non_string_company_and_name():
+    user = {"created_at": "2016-01-01T00:00:00Z", "followers": 10, "public_repos": 5, "company": 12345}
+    profile, err = provenance.build_profile("whoever", user, [], now=NOW)
+    assert profile is None
+    assert "company" in err
+
+    user = {"created_at": "2016-01-01T00:00:00Z", "followers": 10, "public_repos": 5, "name": ["not", "a", "string"]}
+    profile, err = provenance.build_profile("whoever", user, [], now=NOW)
+    assert profile is None
+    assert "name" in err
+
+
+def test_build_profile_accepts_null_optional_numeric_and_string_fields():
+    user = {
+        "created_at": "2016-01-01T00:00:00Z",
+        "followers": None,
+        "public_repos": None,
+        "company": None,
+        "name": None,
+    }
+
+    profile, err = provenance.build_profile("whoever", user, [], now=NOW)
+
+    assert err is None
+    assert profile["followers"] is None
+    assert profile["public_repos"] is None
+    assert profile["company"] is None
+    assert profile["name"] is None
+
+
+def test_top_notable_repos_drops_malformed_entries_instead_of_crashing():
+    # Mixed str/int stargazers_count used to raise TypeError in sort(); a
+    # non-string name would violate the {"name": str, "stars": int} schema.
+    repos = [
+        {"name": "good-repo", "stargazers_count": 5, "fork": False},
+        {"name": "bad-stars-repo", "stargazers_count": "12", "fork": False},
+        {"name": None, "stargazers_count": 100, "fork": False},
+        {"name": "no-stars-repo", "stargazers_count": None, "fork": False},
+    ]
+
+    top = provenance.top_notable_repos(repos)
+
+    names = [r["name"] for r in top]
+    assert "bad-stars-repo" not in names
+    assert None not in names
+    assert "good-repo" in names
+    assert "no-stars-repo" in names
+    for r in top:
+        assert isinstance(r["name"], str)
+        assert isinstance(r["stars"], int)
+
+
+def test_build_profile_rejects_future_dated_created_at():
+    # created_at after --now is not plausible provenance data; it must be
+    # rejected rather than normalized into a negative account_age_years.
+    user = {"created_at": "2027-01-01T00:00:00Z", "followers": 10, "public_repos": 5}
+
+    profile, err = provenance.build_profile("whoever", user, [], now=NOW)
+
+    assert profile is None
+    assert err is not None
+    assert "future" in err or "after reference time" in err
+
+
+def test_main_reads_input_file_via_context_manager(tmp_path, load_fixture_json, capsys):
+    # Pins the fix from an unmanaged `open(...).read()` call to a `with`
+    # block: exercises the --input file path end-to-end.
+    doc = {"owners": [{"login": "alice-example", "user": load_fixture_json("github_user_established.json"), "repos": []}]}
+    input_path = tmp_path / "owners.json"
+    input_path.write_text(json.dumps(doc))
+
+    rc = provenance.main(["--input", str(input_path), "--now", "2026-01-01T00:00:00Z"])
+
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert [p["login"] for p in out["profiles"]] == ["alice-example"]

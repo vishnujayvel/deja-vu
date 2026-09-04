@@ -11,11 +11,16 @@ identical: no wall-clock or live-network state leaks into the result.
 
 No-throw discipline at the process level: a malformed owner entry never
 crashes the run. Instead the caller-supplied identity for a required field
-that is missing or does not parse (for example an unparsable `created_at`,
-or an absent user profile) causes that single record to be REJECTED -- it is
-left out of `profiles` and a reason is appended to `errors[]`. A rejected
-record is never emitted as a plausible-looking profile; degrading a required
-field into a "safe default" would let unverifiable data pass as evidence.
+that is missing or does not parse (for example an unparsable or future-dated
+`created_at`, an absent user profile, or a `followers`/`public_repos`/`name`/
+`company` value with the wrong type) causes that single record to be
+REJECTED -- it is left out of `profiles` and a reason is appended to
+`errors[]`. A rejected record is never emitted as a plausible-looking
+profile; degrading a required field into a "safe default" would let
+unverifiable data pass as evidence. Individual malformed entries in the
+optional `repos` list are dropped from `other_notable` rather than rejecting
+the whole record, since that field is auxiliary best-effort ranking, not
+required identity.
 
 Signal rules (tenure, footprint, org backing), computed only for accepted
 records:
@@ -60,6 +65,8 @@ from datetime import datetime, timezone
 
 
 def classify_signal(age_years, followers, public_repos, company):
+    """followers/public_repos must already be validated to int|None (see
+    _validate_optional_int); this function never sees a non-numeric value."""
     followers = followers or 0
     public_repos = public_repos or 0
     if age_years is None:
@@ -69,6 +76,25 @@ def classify_signal(age_years, followers, public_repos, company):
     if age_years >= 1 and (followers >= 10 or public_repos >= 5):
         return "active-builder"
     return "unknown-experimental"
+
+
+def _validate_optional_int(value, field, login):
+    """Reject (not coerce) a present-but-wrong-typed numeric field. Booleans
+    are rejected too, since `isinstance(True, int)` is True in Python but a
+    bool is not a plausible follower/repo count."""
+    if value is None:
+        return True, None
+    if isinstance(value, bool) or not isinstance(value, int):
+        return False, f"provenance({login}): rejected -- malformed field {field}={value!r}, expected int or null"
+    return True, value
+
+
+def _validate_optional_str(value, field, login):
+    if value is None:
+        return True, None
+    if not isinstance(value, str):
+        return False, f"provenance({login}): rejected -- malformed field {field}={value!r}, expected string or null"
+    return True, value
 
 
 def account_age_years(created_at, now):
@@ -85,11 +111,25 @@ def account_age_years(created_at, now):
     return round((now - created).days / 365.25, 2)
 
 
+def _valid_star_count(value):
+    return value is None or (isinstance(value, int) and not isinstance(value, bool))
+
+
 def top_notable_repos(repos, n=3):
-    scored = [r for r in repos if isinstance(r, dict) and not r.get("fork")]
+    """Auxiliary, best-effort ranking: a repo entry with a malformed `name`
+    or `stargazers_count` is dropped rather than crashing the sort or being
+    emitted with a value that violates the {"name": str, "stars": int}
+    output schema."""
+    scored = [
+        r for r in repos
+        if isinstance(r, dict)
+        and not r.get("fork")
+        and isinstance(r.get("name"), str)
+        and _valid_star_count(r.get("stargazers_count"))
+    ]
     scored.sort(key=lambda r: r.get("stargazers_count") or 0, reverse=True)
     return [
-        {"name": r.get("name"), "stars": r.get("stargazers_count") or 0}
+        {"name": r["name"], "stars": r.get("stargazers_count") or 0}
         for r in scored[:n]
     ]
 
@@ -110,15 +150,26 @@ def build_profile(login, user, repos, now):
     age = account_age_years(created_at, now)
     if age is None:
         return None, f"provenance({login}): rejected -- missing or malformed required field created_at={created_at!r}"
+    if age < 0:
+        return None, f"provenance({login}): rejected -- created_at={created_at!r} is after reference time --now (implausible future account creation)"
 
-    followers = user.get("followers")
-    public_repos = user.get("public_repos")
-    company = user.get("company")
+    ok, followers = _validate_optional_int(user.get("followers"), "followers", login)
+    if not ok:
+        return None, followers
+    ok, public_repos = _validate_optional_int(user.get("public_repos"), "public_repos", login)
+    if not ok:
+        return None, public_repos
+    ok, company = _validate_optional_str(user.get("company"), "company", login)
+    if not ok:
+        return None, company
+    ok, name = _validate_optional_str(user.get("name"), "name", login)
+    if not ok:
+        return None, name
     repos = repos if isinstance(repos, list) else []
 
     return {
         "login": login,
-        "name": user.get("name"),
+        "name": name,
         "company": company,
         "created_at": created_at,
         "followers": followers,
@@ -172,7 +223,11 @@ def build_arg_parser():
 
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
-    raw = sys.stdin.read() if args.input == "-" else open(args.input, "r", encoding="utf-8").read()
+    if args.input == "-":
+        raw = sys.stdin.read()
+    else:
+        with open(args.input, "r", encoding="utf-8") as f:
+            raw = f.read()
     try:
         doc = json.loads(raw)
     except json.JSONDecodeError as e:
