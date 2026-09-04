@@ -11,7 +11,7 @@
       "on_unavailable": {
         "fallback": null,
         "lane_status": "unsupported",
-        "note": "Required at every tier. No fallback source exists; a hunt with this capability unsupported cannot claim discovery coverage and must record the hunt as blocked, not as an empty success."
+        "note": "Required at every tier. No fallback source exists; an unsupported github lane cannot claim discovery coverage and is never recorded as an empty success (docs/design.md §2.3). Because github is required at every tier, this status triggers `stopping_rules.required_human_decision`, halting the hunt for human handoff. (`blocked` is a hunt-level state reserved for an expired probe lease per docs/design.md §7; it is not a lane status and does not apply here.)"
       }
     },
     "registry": {
@@ -71,7 +71,7 @@
       "on_unavailable": {
         "fallback": "architecture_qa (DeepWiki Q&A) as a lower-fidelity substitute",
         "lane_status": "unsupported",
-        "note": "Optional. Never required at Quick or Standard; recommended but not required at Full ahead of hands_on_probe."
+        "note": "Optional at Standard and Full (see tiers.standard.optional_lanes / tiers.full.optional_lanes); not part of Quick tier's lane set at all. Recommended but not required at Full ahead of hands_on_probe."
       }
     },
     "architecture_qa": {
@@ -95,7 +95,7 @@
       "on_unavailable": {
         "fallback": "web_search",
         "lane_status": "degraded",
-        "note": "Documented fallback from references/lanes.md: never hard-fail this lane for a missing optional dependency; degrade to plain WebSearch instead."
+        "note": "Documented fallback from references/lanes.md: never hard-fail this lane for a missing optional dependency; degrade to plain WebSearch instead. Required at Full tier (tiers.full.required_lanes) for the winning candidate's freshness signal; optional at Standard. If web_search is also unavailable, lane_status escalates to `unsupported`; because the lane is required at Full, that unsupported status triggers `stopping_rules.required_human_decision` like any other unsupported required lane."
       }
     },
     "skills_ecosystem": {
@@ -107,7 +107,7 @@
       "on_unavailable": {
         "fallback": "general_web lane search for \"<vocabulary>\" agent skill",
         "lane_status": "unsupported",
-        "note": "Optional at every tier."
+        "note": "Optional at Standard and Full; not part of Quick tier's lane set (see tiers.quick.optional_lanes, which lists only `curation`)."
       }
     },
     "general_web": {
@@ -132,7 +132,7 @@
       "on_unavailable": {
         "fallback": null,
         "lane_status": "unsupported",
-        "note": "Concept-hunt lane. Used in place of the code-discovery optional lanes (curation, skills_ecosystem) only when the hunt has no code to sweep, per references/lanes.md \"Concept hunts\"."
+        "note": "Concept-hunt lane. Available at every tier via that tier's `concept_optional_lanes`; used in place of the code-discovery optional lanes (curation, skills_ecosystem) only when the hunt has no code to sweep, per references/lanes.md \"Concept hunts\" and this matrix's top-level `concept_hunt_policy`."
       }
     },
     "framework_docs": {
@@ -161,6 +161,18 @@
         "note": "Concept-hunt lane; see standards_bodies note."
       }
     },
+    "provenance": {
+      "phase": "shortlist_enrichment",
+      "stage": 6,
+      "question": "Who maintains this, and how established are they (tenure, footprint, org backing)?",
+      "adapter": "scripts/provenance.py --owner <login>",
+      "capability": "provenance_lookup",
+      "on_unavailable": {
+        "fallback": null,
+        "lane_status": "degraded",
+        "note": "Required at Full tier only, for every shortlisted maintainer (tiers.full.evidence_obligations). scripts/provenance.py is no-throw by design: a fetch failure or missing profile never hard-fails the lane, it degrades that maintainer's signal to `unknown-experimental` instead. Lane status is therefore always `degraded` under partial or total capability loss, never `unsupported` or `failed`, so this required lane never triggers `stopping_rules.required_human_decision` on its own."
+      }
+    },
     "hands_on_probe": {
       "phase": "probe",
       "stage": 5,
@@ -174,11 +186,18 @@
       }
     }
   },
+  "concept_hunt_policy": {
+    "applies_when": "The hunt has no code to sweep (design-pattern, architecture, or standards questions per references/lanes.md \"Concept hunts\").",
+    "substitutes_for": ["curation", "skills_ecosystem"],
+    "lanes": ["standards_bodies", "framework_docs", "academic_survey"],
+    "note": "Concept-hunt lanes run the same loop as code-discovery hunts (framing, blind parallel lanes, snowball, judge, gate) and are available at every tier through that tier's `concept_optional_lanes`, substituting for whichever of `curation` / `skills_ecosystem` the tier's own `optional_lanes` would otherwise offer. `scripts/sweep.py` still runs once even on a pure concept hunt; an empty result there is expected, not a failed sweep."
+  },
   "tiers": {
     "quick": {
       "when": "Small script, easily reversed.",
       "required_lanes": ["github", "registry"],
       "optional_lanes": ["curation"],
+      "concept_optional_lanes": ["standards_bodies", "framework_docs", "academic_survey"],
       "snowball": {"hops": 0, "note": "Skip snowballing entirely."},
       "probe": {"required": false, "hands_on_clone": false, "architecture_qa_allowed": false},
       "license_check_required": false,
@@ -205,6 +224,7 @@
       "when": "Module or notable dependency.",
       "required_lanes": ["github", "registry", "grep", "scorecard"],
       "optional_lanes": ["curation", "github_code_reading", "architecture_qa", "freshness", "skills_ecosystem", "general_web"],
+      "concept_optional_lanes": ["standards_bodies", "framework_docs", "academic_survey"],
       "snowball": {"hops": 1, "note": "1 hop, backward or forward, whichever the strongest hit's README suggests."},
       "probe": {"required": false, "hands_on_clone": false, "architecture_qa_allowed": true},
       "license_check_required": true,
@@ -230,8 +250,9 @@
     },
     "full": {
       "when": "Subsystem, framework, or hard-to-reverse choice.",
-      "required_lanes": ["github", "registry", "grep", "scorecard", "hands_on_probe"],
-      "optional_lanes": ["curation", "github_code_reading", "architecture_qa", "freshness", "skills_ecosystem", "general_web"],
+      "required_lanes": ["github", "registry", "grep", "scorecard", "hands_on_probe", "provenance", "freshness"],
+      "optional_lanes": ["curation", "github_code_reading", "architecture_qa", "skills_ecosystem", "general_web"],
+      "concept_optional_lanes": ["standards_bodies", "framework_docs", "academic_survey"],
       "snowball": {"hops_min": 2, "hops_max": 3, "note": "2-3 hops each direction, until hits stop turning up anything not already in the candidate list."},
       "probe": {"required": true, "hands_on_clone": true, "architecture_qa_allowed": true},
       "license_check_required": true,
