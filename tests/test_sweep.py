@@ -1,6 +1,8 @@
 import urllib.error
 import urllib.request
 
+import pytest
+
 import sweep
 from conftest import FakeHTTPResponse
 
@@ -41,6 +43,62 @@ def test_github_lane_http_failure_appends_error_no_crash(monkeypatch, no_gh_cli)
     assert candidates == []
     assert len(errors) == 1
     assert "github(api)" in errors[0]
+
+
+def test_github_lane_gh_cli_exception_is_bounded(monkeypatch):
+    monkeypatch.setattr(sweep.shutil, "which", lambda name: "/usr/bin/gh")
+
+    def fake_run(args, capture_output=True, text=True, timeout=20):
+        raise RuntimeError("x" * 500)
+
+    monkeypatch.setattr(sweep.subprocess, "run", fake_run)
+
+    def fake_urlopen(req, timeout=10):
+        raise urllib.error.URLError("network is down")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    sweep.github_lane("rate limiter", None, 10, errors)
+
+    gh_cli_errors = [e for e in errors if e.startswith("github(gh-cli):")]
+    assert len(gh_cli_errors) == 1
+    assert gh_cli_errors[0] == f"github(gh-cli): RuntimeError: {'x' * 200}"
+    assert len(gh_cli_errors[0]) < 250  # bounded, not the full 500-char message
+
+
+def test_github_lane_narrow_retry_exception_is_bounded(monkeypatch):
+    monkeypatch.setattr(sweep.shutil, "which", lambda name: "/usr/bin/gh")
+
+    class FakeProc:
+        def __init__(self, returncode, stdout, stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    calls = {"n": 0}
+
+    def fake_run(args, capture_output=True, text=True, timeout=20):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return FakeProc(0, "[]")  # full query -> 0 repos, triggers narrowing
+        raise RuntimeError("y" * 500)  # every narrowed retry also fails
+
+    monkeypatch.setattr(sweep.subprocess, "run", fake_run)
+
+    def fake_urlopen(req, timeout=10):
+        raise urllib.error.URLError("network is down")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    sweep.github_lane("a b c d e", None, 10, errors)  # 5 terms -> narrows at 4w, 3w, 2w
+
+    narrow_errors = [e for e in errors if e.startswith("github(narrow-")]
+    assert len(narrow_errors) == 3
+    for e in narrow_errors:
+        assert e.endswith(f"RuntimeError: {'y' * 200}")
+        assert len(e) < 250
 
 
 # -------------------------------------------------------------- registry ---
@@ -203,6 +261,21 @@ def test_grep_lane_429_exhausted_graceful_skip(monkeypatch):
     assert "rate limited" in errors[0]
 
 
+def test_grep_lane_generic_exception_is_bounded(monkeypatch):
+    def fake_urlopen(req, timeout=10):
+        raise ValueError("z" * 500)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    candidates = sweep.grep_lane("token bucket", None, 10, errors, sleep_fn=lambda s: None)
+
+    assert candidates == []
+    assert len(errors) == 1
+    assert errors[0] == f"grep: ValueError: {'z' * 200}"
+    assert len(errors[0]) < 250  # bounded, not the full 500-char message
+
+
 def test_grep_lane_no_pattern_returns_empty_without_network(monkeypatch):
     def fake_urlopen(req, timeout=10):
         raise AssertionError("should never be called when pattern is empty")
@@ -244,6 +317,21 @@ def test_scorecard_lane_404_is_not_an_error(monkeypatch):
 
     assert errors == []
     assert candidates[0]["scorecard"] is None
+
+
+def test_scorecard_lane_enriches_narrowed_github_candidates(monkeypatch, load_fixture_bytes):
+    def fake_urlopen(req, timeout=10):
+        assert "api.securityscorecards.dev" in req.full_url
+        return FakeHTTPResponse(load_fixture_bytes("scorecard.json"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    candidates = [sweep.empty_candidate(name="example/rate-limiter", source_lane="github(narrowed:3w)")]
+    errors = []
+    sweep.scorecard_lane(candidates, errors)
+
+    assert errors == []
+    assert candidates[0]["scorecard"] == {"score": 7.8, "date": "2026-06-15"}
 
 
 def test_scorecard_lane_skips_non_github_candidates(monkeypatch):
@@ -344,3 +432,19 @@ def test_run_sweep_output_has_no_composite_score_field(monkeypatch):
     for candidate in result["candidates"]:
         assert "score" not in candidate  # no per-candidate composite score
     assert set(result.keys()) == {"query", "lanes_run", "candidates", "errors"}
+
+
+# ------------------------------------------------------------------- cli ---
+
+def test_limit_rejects_zero_and_negative():
+    parser = sweep.build_arg_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--query", "q", "--limit", "0"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--query", "q", "--limit", "-1"])
+
+
+def test_limit_accepts_positive_int():
+    parser = sweep.build_arg_parser()
+    args = parser.parse_args(["--query", "q", "--limit", "5"])
+    assert args.limit == 5
