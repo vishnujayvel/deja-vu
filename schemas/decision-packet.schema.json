@@ -356,6 +356,20 @@
               "required": ["authority"]
             }
           }
+        },
+        {
+          "if": {
+            "properties": { "rights": { "enum": ["prohibited", "unknown"] } },
+            "required": ["rights"]
+          },
+          "then": {
+            "not": {
+              "properties": {
+                "route": { "enum": ["fork", "vendor-source"] }
+              },
+              "required": ["route"]
+            }
+          }
         }
       ]
     },

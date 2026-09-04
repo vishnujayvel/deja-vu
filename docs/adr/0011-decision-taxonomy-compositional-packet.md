@@ -51,8 +51,30 @@ contract for the packet §5.4 describes:
   constraints, not left to reviewer discretion: a component missing a stable ID,
   evidence, output boundary, or authority state fails `required`; custom behavior cannot
   carry `authority: agent-authorized` (`clean-room-reimplement` is forced to
-  `custom_behavior: true`, which in turn forbids `agent-authorized`); and a component
-  with `rights: prohibited` cannot carry `authority: approved` or `agent-authorized`.
+  `custom_behavior: true`, which in turn forbids `agent-authorized`); a component
+  with `rights: prohibited` cannot carry `authority: approved` or `agent-authorized`;
+  and (rule 4) a component whose `rights` is `prohibited` or `unknown` cannot carry
+  `route: fork` or `route: vendor-source`.
+- **Rule 4 and the "unlicensed" gap.** `rights` (`§5.4`'s "rights and policy" dimension)
+  has four values: `permitted`, `conditional`, `prohibited`, `unknown`. There is no
+  literal `unlicensed` value — "unlicensed source" is a fact about the candidate
+  (no license grant was found), not a distinct point in this dimension, and it maps to
+  one of the two values that already deny forking/vendoring: `unknown` when the
+  hunt has not verified whether a grant exists (the default for a candidate with no
+  discovered license), and `prohibited` once the hunt confirms no grant exists (e.g. an
+  explicit all-rights-reserved notice, or a license whose terms forbid the redistribution
+  `fork`/`vendor-source` would require). `conditional` is deliberately excluded from rule
+  4: a conditional grant (e.g. attribution-only, non-commercial) still confers some reuse
+  right, so §5.4's "source without reuse rights ... cannot be forked or vendored" does not
+  apply to it — the `policy_clauses` obligations carry the condition instead. This closes
+  the licensing/rights boundary docs/design.md draws at §5.4 ("source without reuse rights
+  may inform an idea, but it cannot be forked or vendored"): before rule 4, only the
+  *authority* on a prohibited/unknown-rights component was constrained (rule 3), so a
+  packet could still select `route: fork` or `route: vendor-source` for that component and
+  merely leave `authority` unresolved — the rights dimension never actually gated the
+  route dimension. Rule 4 makes that gate structural: `fork` and `vendor-source` are
+  unreachable route values whenever rights are prohibited or unverified, independent of
+  what authority state is later attempted.
 - `authority_receipts` entries mirror the authority-receipt field list in §6 of
   `docs/design.md` (stable receipt ID, authenticated principal, issuer and auth method,
   project/hunt IDs, policy version, `approval_material_sha256`, exact component IDs and
@@ -85,7 +107,11 @@ Fable review gate like every other governed JSON contract.
 
 Re-validate if `docs/design.md` §5.4 or §6 changes the dimension list, the packet/record
 split, or the authority-receipt field list; or if a real hunt produces a packet shape the
-schema rejects for a reason that isn't one of the three validation rules stated in §5.4.
+schema rejects for a reason that isn't one of the four validation rules stated in or
+derived from §5.4 (the first three from its closing paragraph; rule 4 structurally
+encodes its "source without reuse rights ... cannot be forked or vendored" sentence,
+added after a Fable review found the rights dimension never constrained the route
+dimension — see `deja-vu-v2.32`).
 
 ## Receipts
 
