@@ -72,7 +72,9 @@ def safe_fetch_json(url, headers=None, timeout=10):
     try:
         return fetch_json(url, headers=headers, timeout=timeout), None
     except Exception as e:  # noqa: BLE001 - deliberate catch-all, no-throw contract
-        return None, f"{type(e).__name__}: {e}"
+        # Exception text can embed arbitrary-length remote response content
+        # (e.g. HTTPError bodies); bound it like the gh-CLI stderr path.
+        return None, f"{type(e).__name__}: {str(e)[:200]}"
 
 
 # ---------------------------------------------------------------- github ---
@@ -118,7 +120,12 @@ def github_lane(query, language, limit, errors):
                         continue
                     short = " ".join(terms[:n])
                     try:
-                        retry_args = [a if a != query else short for a in args]
+                        # Substitute by the query's known positional index
+                        # (args[3]), not by value equality — an equality
+                        # substitution would also clobber --language or
+                        # --limit if either happened to equal the query text.
+                        retry_args = list(args)
+                        retry_args[3] = short
                         rp = subprocess.run(retry_args, capture_output=True, text=True, timeout=20)
                         if rp.returncode == 0 and rp.stdout.strip():
                             for item in json.loads(rp.stdout):
@@ -264,7 +271,10 @@ def registry_lane(query, language, limit, errors):
         candidates += _pypi_search(query, limit, errors)
     if which in (None, "crates"):
         candidates += _crates_search(query, limit, errors)
-    return candidates
+    # With no --language filter this lane fans out across npm/pypi/crates,
+    # each individually capped at `limit` — enforce the documented per-lane
+    # cap on the concatenated result too.
+    return candidates[:limit]
 
 
 # ------------------------------------------------------------------ grep ---
@@ -291,7 +301,7 @@ def grep_lane(pattern, language, limit, errors, max_retries=3, base_delay=1, sle
                 path = ((h.get("path") or {}).get("raw")) or ""
                 candidates.append(empty_candidate(
                     name=repo,
-                    url=f"https://github.com/{repo}",
+                    url=f"https://github.com/{urllib.parse.quote(repo, safe='/')}",
                     source_lane="grep",
                     description=f"pattern match in {path}" if path else "pattern match",
                 ))
@@ -321,7 +331,11 @@ def scorecard_lane(candidates, errors):
     for c in candidates:
         if c.get("source_lane") != "github" or not c.get("name"):
             continue
-        url = f"https://api.securityscorecards.dev/projects/github.com/{c['name']}"
+        # c['name'] is untrusted (from GitHub search / gh CLI output) — quote
+        # it before interpolating into the request path so a hostile name
+        # (containing '../', '?', '#', or whitespace) can't rewrite the
+        # request path/query.
+        url = f"https://api.securityscorecards.dev/projects/github.com/{urllib.parse.quote(c['name'], safe='/')}"
         data, err = safe_fetch_json(url)
         if err:
             # Not every repo has been scored; a 404 is expected, not an error.
