@@ -44,9 +44,15 @@ empty or stale (the cause of a prior refinery self-poll incident, upstream
 gastownhall/gascity#1833). Gastown session identities take the shape
 `<rig>/<binding_prefix><agent-name>` (e.g. `deja-vu/gastown.refinery`), so
 the guard checks that the identity's final `.`-separated segment is
-`refinery`. Polecats and other agents sharing the same `formula_vars` see
-`REFINERY_GATE: skip` and exit 0 — this script never blocks non-refinery
-callers.
+`refinery`. Round-2 review (deja-vu-5x6.3) tightened this to a closed
+allowlist: `REFINERY_GATE: skip` (exit 0) is returned ONLY for a polecat
+session on this rig (`deja-vu/gastown.<alias>`, confirmed against
+`city.toml`'s rig-scoped `[[patches.agent]]` entries and this session's own
+`$GC_AGENT`); any other identity — including the reserved role literals
+`witness`/`mayor`/`deacon`, another rig, an unset/blank value, or an
+unparseable one — refuses with `reason=identity-unknown`. An earlier version
+classified any non-empty trailing token as a generic "other" role and let it
+skip, which silently passed garbled or unrecognized identities.
 
 ### Ordering: quality gates before review
 

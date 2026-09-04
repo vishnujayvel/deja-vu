@@ -39,6 +39,20 @@ REVIEW_JOB_TIMEOUT_SECONDS = 900
 # job id it mints (job-fable-<slug>-<artifact12>-<governing12>-rR-aA).
 JOB_ID_ROUND_ATTEMPT = re.compile(r"-r(?P<round>[1-3])-a(?P<attempt>[1-3])$")
 
+# Closed allowlist for the "other" (skip) identity bucket -- conductor ruling
+# (deja-vu-5x6.3, round 2 finding 1): the ONLY recognized non-refinery
+# gastown role pattern for this rig is a polecat session, whose $GC_AGENT
+# looks like ``deja-vu/gastown.<alias>`` where ``<alias>`` is the polecat's
+# per-instance name (e.g. ``furiosa``), confirmed against this session's own
+# $GC_AGENT and city.toml's rig-scoped [[patches.agent]] entries (dir =
+# "deja-vu": polecat, refinery, witness, claude-fable-review, agy-pro).
+# Anything matching this shape whose alias is itself one of the other known
+# role literals is NOT a polecat instance and must NOT skip -- it refuses
+# with identity-unknown along with every other unrecognized shape (unset,
+# blank, another rig, or unparseable).
+RIG_AGENT_PATTERN = re.compile(r"^deja-vu/gastown\.(?P<role>[^./]+)$")
+RESERVED_NON_POLECAT_ROLES = frozenset({"refinery", "witness", "mayor", "deacon"})
+
 # Order matches the bead contract: pytest, doctor, offline evals, sanitizer.
 QUALITY_GATES: tuple[tuple[list[str], str], ...] = (
     (["python3", "-m", "pytest", "-q"], "pytest"),
@@ -55,14 +69,25 @@ def classify_gc_agent(agent: str | None) -> str:
     (e.g. ``deja-vu/gastown.refinery``); there is no separate GC_ROLE env
     var in the gastown pack (grep confirms only $GC_AGENT is canonical --
     see mol-refinery-patrol's validate-identity step and
-    agents/refinery/prompt.template.md).
+    agents/refinery/prompt.template.md). Refinery detection only requires
+    the identity's final ``.``-separated segment to read "refinery" --
+    matching e.g. ``deja-vu/refinery`` too, not just the canonical
+    ``deja-vu/gastown.refinery`` shape.
 
-    Returns "refinery" when the identity is this session's role, "other"
-    when the identity is set and parses to some other role, or "unknown"
-    when the identity is unset, blank, or does not parse into a role token
-    at all -- conductor ruling: fail closed (refuse) on unknown identity
-    rather than silently skipping like an actually-recognized non-refinery
-    agent would.
+    Returns "refinery" when the identity is this session's role.
+
+    Otherwise, this is a CLOSED ALLOWLIST (conductor ruling, deja-vu-5x6.3
+    round 2 finding 1): "other" is returned ONLY when the identity matches
+    this rig's polecat-session shape ``deja-vu/gastown.<alias>`` and
+    ``<alias>`` is not itself one of the other known non-polecat role
+    literals (RESERVED_NON_POLECAT_ROLES). Every other shape -- unset,
+    blank, another rig, a bare/unparseable value, or one of those reserved
+    role literals -- returns "unknown" and must refuse. The previous
+    implementation classified any non-empty trailing token as "other" and
+    let it skip (exit 0, merge allowed by the caller's convention), which
+    silently passed garbled or unrecognized identities; failing closed here
+    means an identity must positively match a known-safe pattern to skip,
+    not merely fail to match "refinery".
     """
     if agent is None:
         return "unknown"
@@ -71,9 +96,12 @@ def classify_gc_agent(agent: str | None) -> str:
         return "unknown"
     suffix = agent.rsplit("/", 1)[-1]
     role = suffix.rsplit(".", 1)[-1].strip()
-    if not role:
-        return "unknown"
-    return "refinery" if role == "refinery" else "other"
+    if role == "refinery":
+        return "refinery"
+    match = RIG_AGENT_PATTERN.fullmatch(agent)
+    if match and match.group("role") not in RESERVED_NON_POLECAT_ROLES:
+        return "other"
+    return "unknown"
 
 
 def refinery_identity(agent: str | None) -> bool:
@@ -484,7 +512,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    try:
+        args = build_parser().parse_args(argv)
+    except SystemExit as error:
+        # argparse prints usage/error to stderr and raises SystemExit(2) on a
+        # bad invocation (e.g. an unrecognized flag or an invalid --root
+        # value) -- that path bypasses the try/except below entirely, so the
+        # fixed one-line output contract must be honored here too. A clean
+        # --help/--version exit (code 0) is not a usage error; let it through
+        # unchanged since argparse has already printed its own output.
+        code = error.code if isinstance(error.code, int) else 1
+        if code == 0:
+            raise
+        print("REFINERY_GATE: refuse reason=usage")
+        return 1
     root = args.root.resolve()
 
     def finish(status: str, reason: str, extra: dict[str, Any] | None = None) -> int:
