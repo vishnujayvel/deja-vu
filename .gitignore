@@ -24,3 +24,4 @@ data/decisions-registry.jsonl
 *.gate.lock
 .gc/
 .claude/skills/
+.agents/skills/
