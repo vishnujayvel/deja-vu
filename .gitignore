@@ -21,3 +21,6 @@ data/decisions-registry.jsonl
 .beads/*
 !.beads/identity.toml
 .beads.gate.lock
+*.gate.lock
+.gc/
+.claude/skills/
