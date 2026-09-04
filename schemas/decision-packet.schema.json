@@ -99,7 +99,16 @@
           { "not": { "required": ["authority_receipts"] } },
           { "not": { "required": ["executable_component_ids"] } },
           { "not": { "required": ["decision_record_sha256"] } }
-        ]
+        ],
+        "properties": {
+          "route_components": {
+            "items": {
+              "properties": {
+                "authority": { "enum": ["agent-authorized", "human-required"] }
+              }
+            }
+          }
+        }
       }
     },
     {
@@ -335,7 +344,9 @@
         },
         {
           "if": {
-            "properties": { "route": { "const": "clean-room-reimplement" } },
+            "properties": {
+              "route": { "enum": ["clean-room-reimplement", "custom-build"] }
+            },
             "required": ["route"]
           },
           "then": {

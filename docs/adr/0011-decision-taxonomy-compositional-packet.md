@@ -50,11 +50,18 @@ contract for the packet §5.4 describes:
 - Packet-validation rules from §5.4's closing paragraph are encoded as schema
   constraints, not left to reviewer discretion: a component missing a stable ID,
   evidence, output boundary, or authority state fails `required`; custom behavior cannot
-  carry `authority: agent-authorized` (`clean-room-reimplement` is forced to
-  `custom_behavior: true`, which in turn forbids `agent-authorized`); a component
+  carry `authority: agent-authorized` (`clean-room-reimplement` and `custom-build` are
+  both forced to `custom_behavior: true`, which in turn forbids `agent-authorized` —
+  `custom-build` is definitionally custom behavior per the `reuse_route` enum, so it
+  gets the same forcing rule as `clean-room-reimplement` rather than being able to
+  carry `custom_behavior: false` under `agent-authorized`); a component
   with `rights: prohibited` cannot carry `authority: approved` or `agent-authorized`;
-  and (rule 4) a component whose `rights` is `prohibited` or `unknown` cannot carry
-  `route: fork` or `route: vendor-source`.
+  (rule 4) a component whose `rights` is `prohibited` or `unknown` cannot carry
+  `route: fork` or `route: vendor-source`; and (rule 5) a `stage: proposed` packet
+  cannot carry post-resolution authority outcomes (`approved`, `rejected`, `deferred`)
+  on any `route_components` entry, since those outcomes are only meaningful once an
+  authority receipt exists — a `proposed` packet may only declare the pre-resolution
+  states `agent-authorized` or `human-required`.
 - **Rule 4 and the "unlicensed" gap.** `rights` (`§5.4`'s "rights and policy" dimension)
   has four values: `permitted`, `conditional`, `prohibited`, `unknown`. There is no
   literal `unlicensed` value — "unlicensed source" is a fact about the candidate
@@ -107,11 +114,13 @@ Fable review gate like every other governed JSON contract.
 
 Re-validate if `docs/design.md` §5.4 or §6 changes the dimension list, the packet/record
 split, or the authority-receipt field list; or if a real hunt produces a packet shape the
-schema rejects for a reason that isn't one of the four validation rules stated in or
+schema rejects for a reason that isn't one of the five validation rules stated in or
 derived from §5.4 (the first three from its closing paragraph; rule 4 structurally
 encodes its "source without reuse rights ... cannot be forked or vendored" sentence,
 added after a Fable review found the rights dimension never constrained the route
-dimension — see `deja-vu-v2.32`).
+dimension — see `deja-vu-v2.32`; rule 5 closes a second Fable re-review gap where
+`custom-build` could hide custom behavior under `agent-authorized` and a `proposed`
+packet could pre-bake post-resolution authority outcomes — see `deja-vu-v2.2.1`).
 
 ## Receipts
 

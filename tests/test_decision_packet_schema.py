@@ -1,15 +1,20 @@
-"""Positive/negative fixtures for schemas/decision-packet.schema.json's four
+"""Positive/negative fixtures for schemas/decision-packet.schema.json's five
 packet-validation rules (docs/design.md §5.4, encoded per ADR-11):
 
 1. a route component missing a stable ID, evidence, output boundary, or
    authority state fails `required`.
 2. custom behavior cannot be hidden under `authority: agent-authorized`, and
-   `route: clean-room-reimplement` is forced to `custom_behavior: true`.
+   `route: clean-room-reimplement` or `route: custom-build` is forced to
+   `custom_behavior: true`.
 3. `rights: prohibited` cannot carry `authority: approved` or
    `agent-authorized`.
 4. `rights: prohibited` or `rights: unknown` (the two values "unlicensed"
    source maps to per ADR-11) cannot carry `route: fork` or
    `route: vendor-source`.
+5. a `stage: proposed` packet cannot carry post-resolution authority outcomes
+   (`approved`, `rejected`, `deferred`) on any `route_components` entry —
+   only the pre-resolution states (`agent-authorized`, `human-required`) are
+   allowed before an authority receipt exists.
 """
 
 import copy
@@ -122,6 +127,27 @@ def test_rule2_clean_room_forces_custom_behavior_true():
     assert_invalid(packet_with(component))
 
 
+def test_rule2_custom_build_forces_custom_behavior_true():
+    component = base_component(
+        route="custom-build",
+        custom_behavior=False,
+        rights="permitted",
+        authority="agent-authorized",
+    )
+    assert_invalid(packet_with(component))
+
+
+def test_rule2_custom_build_with_custom_behavior_true_is_valid():
+    component = base_component(
+        route="custom-build",
+        custom_behavior=True,
+        custom_delta={"ownership": "us", "maintenance_surface": "adapter"},
+        rights="permitted",
+        authority="human-required",
+    )
+    assert_valid(packet_with(component))
+
+
 # Rule 3: prohibited rights cannot carry approved/agent-authorized authority.
 
 
@@ -163,4 +189,23 @@ def test_rule4_conditional_rights_can_fork_or_vendor():
 @pytest.mark.parametrize("rights", ["prohibited", "unknown"])
 def test_rule4_unlicensed_rights_can_still_depend(rights):
     component = base_component(rights=rights, route="depend", authority="human-required")
+    assert_valid(packet_with(component))
+
+
+# Rule 5: `stage: proposed` cannot carry post-resolution authority outcomes
+# on any route component.
+
+
+@pytest.mark.parametrize("authority", ["approved", "rejected", "deferred"])
+def test_rule5_proposed_stage_rejects_post_resolution_authority(authority):
+    # base_component()'s rights default is "permitted", so rule 3 (prohibited
+    # rights + approved/agent-authorized authority) never fires here — only
+    # rule 5 is exercised.
+    component = base_component(authority=authority)
+    assert_invalid(packet_with(component))
+
+
+@pytest.mark.parametrize("authority", ["agent-authorized", "human-required"])
+def test_rule5_proposed_stage_allows_pre_resolution_authority(authority):
+    component = base_component(authority=authority)
     assert_valid(packet_with(component))
