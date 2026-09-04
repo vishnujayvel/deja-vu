@@ -16,3 +16,8 @@ __pycache__/
 .beads-credential-key
 .beads/proxieddb/
 data/decisions-registry.jsonl
+
+# Gas City
+.beads/*
+!.beads/identity.toml
+.beads.gate.lock
