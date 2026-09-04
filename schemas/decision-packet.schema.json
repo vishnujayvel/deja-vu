@@ -1,0 +1,474 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deja-vu.local/schemas/decision-packet/v1",
+  "title": "Deja Vu compositional decision packet",
+  "description": "Proposed decision packet or authorized decision record for one Deja Vu hunt, per docs/design.md §5.4. Models need disposition, prior-art kind, candidate fit, rights and policy, evidence level, reuse route, custom delta, uncertainty, and authority as independent dimensions applied at packet or route-component scope.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "packet_id",
+    "stage",
+    "problem_disposition",
+    "candidate_comparisons",
+    "uncertainty",
+    "reversibility",
+    "route_components"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "deja-vu.decision-packet/v1"
+    },
+    "packet_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "description": "proposed: the immutable pre-authority packet whose approval_material_sha256 excludes authority decisions and receipt references. authorized: the decision record that references the immutable proposed packet, authority receipts, and the exact executable component set.",
+      "enum": ["proposed", "authorized"]
+    },
+    "problem_disposition": {
+      "$ref": "#/$defs/problem_disposition"
+    },
+    "candidate_comparisons": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/candidate_comparison"
+      }
+    },
+    "uncertainty": {
+      "$ref": "#/$defs/uncertainty"
+    },
+    "reversibility": {
+      "type": "string",
+      "minLength": 1
+    },
+    "route_components": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/route_component"
+      }
+    },
+    "approval_material_sha256": {
+      "$ref": "#/$defs/sha256_hex"
+    },
+    "proposed_packet_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packet_id", "approval_material_sha256"],
+      "properties": {
+        "packet_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approval_material_sha256": {
+          "$ref": "#/$defs/sha256_hex"
+        }
+      }
+    },
+    "authority_receipts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/authority_receipt"
+      }
+    },
+    "executable_component_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "decision_record_sha256": {
+      "$ref": "#/$defs/sha256_hex"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "stage": { "const": "proposed" } }
+      },
+      "then": {
+        "required": ["approval_material_sha256"],
+        "not": { "required": ["proposed_packet_ref"] },
+        "allOf": [
+          { "not": { "required": ["authority_receipts"] } },
+          { "not": { "required": ["executable_component_ids"] } },
+          { "not": { "required": ["decision_record_sha256"] } }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": { "stage": { "const": "authorized" } }
+      },
+      "then": {
+        "required": [
+          "proposed_packet_ref",
+          "authority_receipts",
+          "executable_component_ids",
+          "decision_record_sha256"
+        ],
+        "not": { "required": ["approval_material_sha256"] }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256_hex": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "need_disposition": {
+      "enum": ["resolved", "reframe", "proceed", "unknown"]
+    },
+    "prior_art_kind": {
+      "enum": [
+        "repository",
+        "package",
+        "service",
+        "standard",
+        "research",
+        "pattern",
+        "skill",
+        "null-solution"
+      ]
+    },
+    "candidate_fit": {
+      "enum": ["exact", "composable", "partial", "mismatch", "unverified", "none"]
+    },
+    "rights_and_policy": {
+      "enum": ["permitted", "conditional", "prohibited", "unknown"]
+    },
+    "evidence_level": {
+      "enum": ["metadata", "documented", "source-inspected", "probed", "operational"]
+    },
+    "reuse_route": {
+      "enum": [
+        "depend",
+        "configure",
+        "fork",
+        "vendor-source",
+        "clean-room-reimplement",
+        "compose",
+        "custom-build",
+        "none"
+      ]
+    },
+    "authority": {
+      "description": "agent-authorized and human-required are pre-resolution requirement states; approved, rejected, and deferred are post-resolution outcomes recorded by an authority receipt.",
+      "enum": ["agent-authorized", "human-required", "approved", "rejected", "deferred"]
+    },
+    "problem_disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["need_disposition", "summary"],
+      "properties": {
+        "need_disposition": {
+          "$ref": "#/$defs/need_disposition"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "candidate_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_id", "prior_art_kind", "summary", "evidence_refs"],
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prior_art_kind": {
+          "$ref": "#/$defs/prior_art_kind"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "uncertainty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["residual"],
+      "properties": {
+        "residual": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "custom_delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownership", "maintenance_surface"],
+      "properties": {
+        "ownership": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maintenance_surface": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "route_component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id",
+        "route",
+        "output_boundary",
+        "evidence_refs",
+        "fit",
+        "rights",
+        "evidence_level",
+        "custom_behavior",
+        "policy_clauses",
+        "authority",
+        "accepted_obligations",
+        "residual_uncertainty",
+        "next_action"
+      ],
+      "properties": {
+        "component_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route": {
+          "$ref": "#/$defs/reuse_route"
+        },
+        "output_boundary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_ref": {
+          "type": ["string", "null"]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fit": {
+          "$ref": "#/$defs/candidate_fit"
+        },
+        "rights": {
+          "$ref": "#/$defs/rights_and_policy"
+        },
+        "evidence_level": {
+          "$ref": "#/$defs/evidence_level"
+        },
+        "custom_behavior": {
+          "type": "boolean"
+        },
+        "custom_delta": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/custom_delta" }
+          ]
+        },
+        "policy_clauses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "authority": {
+          "$ref": "#/$defs/authority"
+        },
+        "accepted_obligations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "residual_uncertainty": {
+          "type": "string"
+        },
+        "next_action": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "custom_behavior": { "const": true } },
+            "required": ["custom_behavior"]
+          },
+          "then": {
+            "required": ["custom_delta"],
+            "properties": {
+              "custom_delta": { "$ref": "#/$defs/custom_delta" }
+            },
+            "not": {
+              "properties": { "authority": { "const": "agent-authorized" } },
+              "required": ["authority"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "route": { "const": "clean-room-reimplement" } },
+            "required": ["route"]
+          },
+          "then": {
+            "properties": { "custom_behavior": { "const": true } },
+            "required": ["custom_behavior"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "rights": { "const": "prohibited" } },
+            "required": ["rights"]
+          },
+          "then": {
+            "not": {
+              "properties": {
+                "authority": { "enum": ["approved", "agent-authorized"] }
+              },
+              "required": ["authority"]
+            }
+          }
+        }
+      ]
+    },
+    "authority_receipt": {
+      "description": "An authority receipt per docs/design.md §6 authority model.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt_id",
+        "principal",
+        "issuer",
+        "auth_method",
+        "project_id",
+        "hunt_id",
+        "policy_version",
+        "approval_material_sha256",
+        "components",
+        "decision",
+        "nonce",
+        "issued_at",
+        "expires_at",
+        "issuer_key_id",
+        "signature"
+      ],
+      "properties": {
+        "receipt_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "principal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issuer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auth_method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hunt_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approval_material_sha256": {
+          "$ref": "#/$defs/sha256_hex"
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["component_id", "component_sha256"],
+            "properties": {
+              "component_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "component_sha256": {
+                "$ref": "#/$defs/sha256_hex"
+              }
+            }
+          }
+        },
+        "decision": {
+          "enum": ["approved", "rejected", "deferred"]
+        },
+        "nonce": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revocation_ref": {
+          "type": ["string", "null"]
+        },
+        "issuer_key_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signature": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algorithm", "value"],
+          "properties": {
+            "algorithm": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "contentEncoding": "base64"
+            }
+          }
+        }
+      }
+    }
+  }
+}

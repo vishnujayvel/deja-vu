@@ -18,6 +18,10 @@
       "contract": "Run Deja Vu trigger and verdict fixtures deterministically without network access or workspace mutation. Fail nonzero for any fixture mismatch and report enough local context to identify the failing case."
     },
     {
+      "path": "schemas/decision-packet.schema.json",
+      "contract": "Define a closed JSON shape for the compositional decision packet in docs/design.md §5.4: independent need-disposition, prior-art-kind, fit, rights, evidence-level, reuse-route, custom-delta, uncertainty, and authority dimensions applied at packet or route-component scope. Distinguish the immutable proposed packet from the authorized decision record, reject a component missing a stable ID, evidence, output boundary, or authority state, reject custom behavior hidden under agent-authorized authority, and reject a component whose selected route is approved despite prohibited rights."
+    },
+    {
       "path": "schemas/fable-review-record.schema.json",
       "contract": "Describe one fresh Claude Fable 5 adversarial review bound to a module, artifact, decoded contract, governing contract, implementation Bead, Direct job, protected launcher evidence, output, and result-evidence digest. Reject unknown fields, preserve typed findings, and require an Ed25519 adjudication envelope for any non-clean release disposition without copying forgeable permission claims into the record."
     },
