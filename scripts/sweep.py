@@ -67,14 +67,22 @@ def fetch_json(url, headers=None, timeout=10):
     return json.loads(body.decode("utf-8"))
 
 
+def _bounded_exc(e):
+    """Format an exception as "Type: message", capped at 200 chars.
+
+    Exception text can embed arbitrary-length remote response content
+    (e.g. HTTPError bodies, JSONDecodeError snippets); bound it like the
+    gh-CLI stderr path so every error string stays boundedly sized.
+    """
+    return f"{type(e).__name__}: {str(e)[:200]}"
+
+
 def safe_fetch_json(url, headers=None, timeout=10):
     """Never raises. Returns (data, error_str)."""
     try:
         return fetch_json(url, headers=headers, timeout=timeout), None
     except Exception as e:  # noqa: BLE001 - deliberate catch-all, no-throw contract
-        # Exception text can embed arbitrary-length remote response content
-        # (e.g. HTTPError bodies); bound it like the gh-CLI stderr path.
-        return None, f"{type(e).__name__}: {str(e)[:200]}"
+        return None, _bounded_exc(e)
 
 
 # ---------------------------------------------------------------- github ---
@@ -146,7 +154,7 @@ def github_lane(query, language, limit, errors):
                             )
                             return candidates
                     except Exception as e:  # noqa: BLE001
-                        errors.append(f"github(narrow-{n}w): {type(e).__name__}: {e}")
+                        errors.append(f"github(narrow-{n}w): {_bounded_exc(e)}")
                 errors.append(
                     "github(gh-cli): 0 repos for the full query AND every narrowed "
                     "retry — falling through to the REST lane. Treat a still-empty "
@@ -155,7 +163,7 @@ def github_lane(query, language, limit, errors):
             if proc.stderr:
                 errors.append(f"github(gh-cli): {proc.stderr.strip()[:200]}")
         except Exception as e:  # noqa: BLE001
-            errors.append(f"github(gh-cli): {type(e).__name__}: {e}")
+            errors.append(f"github(gh-cli): {_bounded_exc(e)}")
 
     # Fallback: unauthenticated GitHub REST search API.
     q = query
@@ -319,7 +327,7 @@ def grep_lane(pattern, language, limit, errors, max_retries=3, base_delay=1, sle
                 errors.append(f"grep: HTTPError {e.code}")
             return []
         except Exception as e:  # noqa: BLE001
-            errors.append(f"grep: {type(e).__name__}: {e}")
+            errors.append(f"grep: {_bounded_exc(e)}")
             return []
     return []
 
@@ -327,9 +335,15 @@ def grep_lane(pattern, language, limit, errors, max_retries=3, base_delay=1, sle
 # ------------------------------------------------------------- scorecard ---
 
 def scorecard_lane(candidates, errors):
-    """Enriches github-sourced candidates in place with an OpenSSF Scorecard."""
+    """Enriches github-sourced candidates in place with an OpenSSF Scorecard.
+
+    A github-sourced candidate carries source_lane "github" (full-query hit)
+    or "github(narrowed:<n>w)" (narrowed-retry hit, see github_lane) — both
+    are per-candidate github repos and must be enriched.
+    """
     for c in candidates:
-        if c.get("source_lane") != "github" or not c.get("name"):
+        source_lane = c.get("source_lane") or ""
+        if not source_lane.startswith("github") or not c.get("name"):
             continue
         # c['name'] is untrusted (from GitHub search / gh CLI output) — quote
         # it before interpolating into the request path so a hostile name
@@ -388,12 +402,26 @@ def run_sweep(query, pattern, language, limit, lanes, no_scorecard):
     }
 
 
+def _positive_int(value):
+    """argparse type: reject zero/negative --limit values.
+
+    A non-positive limit produces degenerate slice/URL semantics downstream
+    (candidates[:limit] returning all-but-last, per_page=-1 in remote query
+    strings, grep_lane's len(candidates) >= limit short-circuiting
+    immediately) instead of enforcing a cap, so it is rejected here.
+    """
+    ivalue = int(value)
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError(f"--limit must be a positive integer, got {value}")
+    return ivalue
+
+
 def build_arg_parser():
     p = argparse.ArgumentParser(description="deja-vu deterministic multi-lane prior-art sweep")
     p.add_argument("--query", required=True, help="problem/candidate search string")
     p.add_argument("--pattern", default=None, help="regex/pattern for the grep.app lane (defaults to --query)")
     p.add_argument("--language", default=None, help="language filter, also selects registry (python/javascript/rust)")
-    p.add_argument("--limit", type=int, default=10, help="max candidates per lane")
+    p.add_argument("--limit", type=_positive_int, default=10, help="max candidates per lane (must be positive)")
     p.add_argument("--lanes", default=",".join(ALL_LANES), help="comma-separated lane list")
     p.add_argument("--no-scorecard", action="store_true", help="disable the OpenSSF Scorecard enrichment lane")
     return p
