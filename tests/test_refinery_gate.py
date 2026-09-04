@@ -108,6 +108,37 @@ def test_select_round_attempt_ignores_stale_hash_records():
     assert refinery_gate.select_round_attempt(records, "a" * 64, "b" * 64) == (1, 1)
 
 
+def test_select_round_attempt_unparseable_job_id_consumes_its_round():
+    records = [
+        {
+            "metadata": {
+                "review_artifact_sha256": "a" * 64,
+                "review_governing_contract_sha256": "b" * 64,
+                "review_delegate_job_id": "not-a-round-attempt-suffix",
+                "review_round": "1",
+            }
+        }
+    ]
+    # Round 1 is fully consumed by the unparseable record (conservative
+    # fallback), so the next free slot is round 2, attempt 1 -- not (1, 1),
+    # which the old code would have returned by ignoring the record.
+    assert refinery_gate.select_round_attempt(records, "a" * 64, "b" * 64) == (2, 1)
+
+
+def test_select_round_attempt_unparseable_job_id_with_invalid_round_falls_back_to_one():
+    records = [
+        {
+            "metadata": {
+                "review_artifact_sha256": "a" * 64,
+                "review_governing_contract_sha256": "b" * 64,
+                "review_delegate_job_id": "not-a-round-attempt-suffix",
+                "review_round": "not-a-number",
+            }
+        }
+    ]
+    assert refinery_gate.select_round_attempt(records, "a" * 64, "b" * 64) == (2, 1)
+
+
 def test_select_round_attempt_exhausted_returns_none():
     records = [
         {
@@ -123,9 +154,7 @@ def test_select_round_attempt_exhausted_returns_none():
     assert refinery_gate.select_round_attempt(records, "a" * 64, "b" * 64) is None
 
 
-def test_write_review_record_metadata_satisfies_fable_review_gate(tmp_path, monkeypatch):
-    module_path = make_workspace(tmp_path)
-    artifact_sha256, governing_sha256 = module_hashes(tmp_path)
+def _make_review(artifact_sha256, governing_sha256, **overrides):
     review = {
         "schema_version": "deja-vu.fable-review/v1",
         "review_id": "review-abc123",
@@ -147,6 +176,16 @@ def test_write_review_record_metadata_satisfies_fable_review_gate(tmp_path, monk
         "findings": [],
         "adjudication": None,
     }
+    review.update(overrides)
+    return review
+
+
+def test_write_review_record_metadata_satisfies_fable_review_gate(tmp_path, monkeypatch):
+    make_workspace(tmp_path)
+    artifact_sha256, governing_sha256 = module_hashes(tmp_path)
+    review = _make_review(
+        artifact_sha256, governing_sha256, permission="read-only", permission_attested=True
+    )
 
     captured = {}
 
@@ -161,6 +200,8 @@ def test_write_review_record_metadata_satisfies_fable_review_gate(tmp_path, monk
     created_id = refinery_gate.write_review_record(tmp_path, "deja-vu-5x6.1", review)
 
     assert created_id == "deja-vu-review-99"
+    assert captured["metadata"]["review_permission"] == "read-only"
+    assert captured["metadata"]["review_permission_attested"] == "true"
     record = {
         "id": "deja-vu-review-99",
         "status": "closed",
@@ -172,11 +213,45 @@ def test_write_review_record_metadata_satisfies_fable_review_gate(tmp_path, monk
     assert report["covered"] == [MODULE]
 
 
+def test_write_review_record_omits_permission_fields_when_verify_review_lacks_them(
+    tmp_path, monkeypatch
+):
+    make_workspace(tmp_path)
+    artifact_sha256, governing_sha256 = module_hashes(tmp_path)
+    review = _make_review(artifact_sha256, governing_sha256)
+    assert "permission" not in review and "permission_attested" not in review
+
+    captured = {}
+
+    def fake_run(command, cwd=None, capture_output=True, text=True, check=False, timeout=None):
+        assert command[:2] == ["bd", "create"]
+        metadata = json.loads(command[command.index("--metadata") + 1])
+        captured["metadata"] = metadata
+        return FakeCompleted(0, json.dumps({"id": "deja-vu-review-99"}))
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", fake_run)
+
+    refinery_gate.write_review_record(tmp_path, "deja-vu-5x6.1", review)
+
+    assert "review_permission" not in captured["metadata"]
+    assert "review_permission_attested" not in captured["metadata"]
+    # Undeclared permission evidence must not silently count as coverage.
+    record = {
+        "id": "deja-vu-review-99",
+        "status": "closed",
+        "labels": ["fable-review"],
+        "metadata": {**captured["metadata"], "review_module": MODULE},
+    }
+    report = fable_review_gate.check_coverage(tmp_path, [record], {MODULE: CONTRACT})
+    assert report["covered"] == []
+    assert any("not read-only" in problem for problem in report["problems"])
+
+
 # --- main() orchestration ----------------------------------------------------
 
 
-def test_skip_when_not_refinery(tmp_path, monkeypatch, capsys):
-    monkeypatch.delenv("GC_AGENT", raising=False)
+def test_skip_when_gc_agent_identifies_non_refinery(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("GC_AGENT", "deja-vu/gastown.polecat")
 
     def forbidden(*args, **kwargs):
         raise AssertionError("must not run any subprocess when skipping")
@@ -187,6 +262,54 @@ def test_skip_when_not_refinery(tmp_path, monkeypatch, capsys):
 
     assert code == 0
     assert "REFINERY_GATE: skip" in capsys.readouterr().out
+
+
+def test_refuse_when_gc_agent_unset(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("GC_AGENT", raising=False)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("must not run any subprocess when identity is unknown")
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", forbidden)
+
+    code = refinery_gate.main(["--root", str(tmp_path)])
+
+    assert code == 1
+    assert "REFINERY_GATE: refuse reason=identity-unknown" in capsys.readouterr().out
+
+
+def test_refuse_when_gc_agent_blank(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("GC_AGENT", "   ")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("must not run any subprocess when identity is unknown")
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", forbidden)
+
+    code = refinery_gate.main(["--root", str(tmp_path)])
+
+    assert code == 1
+    assert "REFINERY_GATE: refuse reason=identity-unknown" in capsys.readouterr().out
+
+
+def test_runs_when_gc_agent_identifies_refinery(tmp_path, monkeypatch, capsys):
+    make_workspace(tmp_path)
+    monkeypatch.setenv("GC_AGENT", "deja-vu/gastown.refinery")
+
+    def fake_run(command, cwd=None, capture_output=True, text=True, check=False, timeout=None):
+        gate = _quality_gates_pass(command)
+        if gate is not None:
+            return gate
+        if command == ["git", "diff", "--name-only", "origin/p1-night...HEAD"]:
+            return FakeCompleted(0, "README.md\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", fake_run)
+
+    code = refinery_gate.main(["--root", str(tmp_path)])
+
+    assert code == 0
+    assert "REFINERY_GATE: allow reason=ok" in capsys.readouterr().out
 
 
 def test_refuse_on_failed_tests(tmp_path, monkeypatch, capsys):
@@ -401,3 +524,167 @@ def test_refuse_on_fix_first_verdict_appends_findings_note(tmp_path, monkeypatch
     assert "REFINERY_GATE: refuse reason=review-verdict" in capsys.readouterr().out
     assert len(note_calls) == 1
     assert "fix-first" in note_calls[0][4]
+
+
+def test_refuse_on_fix_first_verdict_surfaces_note_append_failure(tmp_path, monkeypatch, capsys):
+    module_path = make_workspace(tmp_path)
+    findings = [
+        {
+            "finding_id": "finding-1",
+            "severity": "high",
+            "summary": "Missing input validation.",
+            "evidence": "line 12",
+            "contract_clause": "deterministic results",
+            "classification": "actionable",
+            "resolution": "Unresolved.",
+        }
+    ]
+    original_fake_run = _fake_run_full_review(module_path, "fix-first", findings)
+
+    def wrapped(command, **kwargs):
+        if command[:2] == ["bd", "update"]:
+            return FakeCompleted(1, "", "bd: database locked")
+        return original_fake_run(command, **kwargs)
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", wrapped)
+
+    code = refinery_gate.main(["--root", str(tmp_path), "--force"])
+
+    out = capsys.readouterr().out
+    assert code == 1
+    # Failure to record the findings note must be visible in the refusal
+    # reason, not silently swallowed.
+    assert "note-append-failed" in out
+    assert out.count("REFINERY_GATE:") == 1
+
+
+def test_internal_error_after_identity_guard_still_prints_single_line(
+    tmp_path, monkeypatch, capsys
+):
+    make_workspace(tmp_path)
+
+    def fake_run(command, cwd=None, capture_output=True, text=True, check=False, timeout=None):
+        gate = _quality_gates_pass(command)
+        if gate is not None:
+            return gate
+        if command == ["git", "diff", "--name-only", "origin/p1-night...HEAD"]:
+            return FakeCompleted(0, f"{MODULE}\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        refinery_gate.fable_review_gate,
+        "discover_modules",
+        lambda root: (_ for _ in ()).throw(OSError("disk went away")),
+    )
+
+    code = refinery_gate.main(["--root", str(tmp_path), "--force"])
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert out.count("REFINERY_GATE:") == 1
+    assert "REFINERY_GATE: refuse reason=internal-error:disk went away" in out
+
+
+def test_target_flag_controls_diff_base(tmp_path, monkeypatch, capsys):
+    make_workspace(tmp_path)
+
+    def fake_run(command, cwd=None, capture_output=True, text=True, check=False, timeout=None):
+        gate = _quality_gates_pass(command)
+        if gate is not None:
+            return gate
+        if command == ["git", "diff", "--name-only", "origin/release...HEAD"]:
+            return FakeCompleted(0, "README.md\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", fake_run)
+
+    code = refinery_gate.main(["--root", str(tmp_path), "--force", "--target", "release"])
+
+    assert code == 0
+    assert "REFINERY_GATE: allow reason=ok" in capsys.readouterr().out
+
+
+def test_check_final_coverage_refuses_on_stale_problem_even_if_report_lists_module_covered(
+    tmp_path, monkeypatch
+):
+    """Pins finding 1: the recheck must not trust bare 'covered' membership.
+
+    Directly exercises check_final_coverage() against a canned
+    fable_review_gate.py report shaped like the real check_coverage() output
+    (covered/missing/missing_contracts/problems), asserting each category is
+    inspected on its own rather than only "module not in covered".
+    """
+
+    def fake_run(command, cwd=None, capture_output=True, text=True, check=False, timeout=None):
+        if command[:3] == ["python3", "scripts/fable_review_gate.py", "--root"]:
+            return FakeCompleted(
+                1,
+                json.dumps(
+                    {
+                        "covered": [],
+                        "missing": [],
+                        "missing_contracts": [],
+                        "problems": [f"{MODULE} (deja-vu-review-1): stale artifact hash"],
+                    }
+                ),
+            )
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", fake_run)
+
+    ok, reason = refinery_gate.check_final_coverage(tmp_path, [MODULE])
+
+    assert ok is False
+    assert "stale=" + MODULE in reason
+
+
+def test_check_final_coverage_refuses_on_missing_and_uncontracted(tmp_path, monkeypatch):
+    other_module = "scripts/other_module.py"
+
+    def fake_run(command, cwd=None, capture_output=True, text=True, check=False, timeout=None):
+        if command[:3] == ["python3", "scripts/fable_review_gate.py", "--root"]:
+            return FakeCompleted(
+                1,
+                json.dumps(
+                    {
+                        "covered": [],
+                        "missing": [MODULE],
+                        "missing_contracts": [other_module],
+                        "problems": [],
+                    }
+                ),
+            )
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", fake_run)
+
+    ok, reason = refinery_gate.check_final_coverage(tmp_path, [MODULE, other_module])
+
+    assert ok is False
+    assert f"missing={MODULE}" in reason
+    assert f"uncontracted={other_module}" in reason
+
+
+def test_check_final_coverage_allows_when_fully_covered(tmp_path, monkeypatch):
+    def fake_run(command, cwd=None, capture_output=True, text=True, check=False, timeout=None):
+        if command[:3] == ["python3", "scripts/fable_review_gate.py", "--root"]:
+            return FakeCompleted(
+                1,
+                json.dumps(
+                    {
+                        "covered": [MODULE],
+                        "missing": [],
+                        "missing_contracts": [],
+                        "problems": [],
+                    }
+                ),
+            )
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(refinery_gate.subprocess, "run", fake_run)
+
+    ok, reason = refinery_gate.check_final_coverage(tmp_path, [MODULE])
+
+    assert ok is True
+    assert reason == ""
