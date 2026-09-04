@@ -18,6 +18,10 @@
       "contract": "Run Deja Vu trigger and verdict fixtures deterministically without network access or workspace mutation. Fail nonzero for any fixture mismatch and report enough local context to identify the failing case."
     },
     {
+      "path": "policy/tier-matrix.json",
+      "contract": "Define the single canonical tier, lane, capability, and budget matrix referenced by docs/design.md §7. For each tier, name required and optional lanes, the lane phase (discovery, shortlist_enrichment, or probe) per docs/design.md §5.2, evidence obligations, explicit numeric budgets in seconds, external_requests, tokens, probes, and receipt_bytes, stopping rules, and the documented fallback or degraded lane status for every capability that may be unavailable. Reconcile lane-count and Quick-tier coverage claims across README.md, references/lanes.md, and SKILL.md without introducing a second, conflicting source of truth."
+    },
+    {
       "path": "schemas/decision-packet.schema.json",
       "contract": "Define a closed JSON shape for the compositional decision packet in docs/design.md §5.4: independent need-disposition, prior-art-kind, fit, rights, evidence-level, reuse-route, custom-delta, uncertainty, and authority dimensions applied at packet or route-component scope. Distinguish the immutable proposed packet from the authorized decision record, reject a component missing a stable ID, evidence, output boundary, or authority state, reject custom behavior hidden under agent-authorized authority, and reject a component whose selected route is approved despite prohibited rights."
     },

@@ -1,0 +1,266 @@
+{
+  "schema_version": "deja-vu.tier-matrix/v1",
+  "description": "Canonical source of truth for Deja Vu tier, lane, capability, and budget policy per docs/design.md §7. SKILL.md, references/lanes.md, references/snowball-probe.md, and README.md describe this matrix in prose; they must not restate conflicting numbers. Lane `phase` values (`discovery`, `shortlist_enrichment`, `probe`) match the lane envelope in docs/design.md §5.2.",
+  "lanes": {
+    "github": {
+      "phase": "discovery",
+      "stage": 3,
+      "question": "What repos claim to solve this?",
+      "adapter": "scripts/sweep.py --lanes github",
+      "capability": "github_search",
+      "on_unavailable": {
+        "fallback": null,
+        "lane_status": "unsupported",
+        "note": "Required at every tier. No fallback source exists; a hunt with this capability unsupported cannot claim discovery coverage and must record the hunt as blocked, not as an empty success."
+      }
+    },
+    "registry": {
+      "phase": "discovery",
+      "stage": 3,
+      "question": "Is it published (npm / PyPI / crates.io)?",
+      "adapter": "scripts/sweep.py --lanes registry",
+      "capability": "registry_lookup",
+      "on_unavailable": {
+        "fallback": null,
+        "lane_status": "skipped",
+        "note": "Registry coverage becomes `skipped`; hunt may proceed on remaining required lanes but must record the gap in Judge/Record per docs/design.md §2.3 (skipped never counts as an empty success)."
+      }
+    },
+    "grep": {
+      "phase": "discovery",
+      "stage": 3,
+      "question": "Does anyone actually write this pattern (grep.app over ~1M public repos)?",
+      "adapter": "scripts/sweep.py --lanes grep",
+      "capability": "code_pattern_search",
+      "on_unavailable": {
+        "fallback": null,
+        "lane_status": "degraded",
+        "note": "sweep.py backs off gracefully on HTTP 429 per references/lanes.md; partial results still count but the lane status is `degraded`, not `succeeded`."
+      }
+    },
+    "scorecard": {
+      "phase": "shortlist_enrichment",
+      "stage": 3,
+      "question": "Is it maintained safely (OpenSSF Scorecard)?",
+      "adapter": "scripts/sweep.py --lanes scorecard",
+      "capability": "scorecard_api",
+      "on_unavailable": {
+        "fallback": "scripts/sweep.py --no-scorecard",
+        "lane_status": "skipped",
+        "note": "Explicit, documented fallback: rerun sweep with --no-scorecard. Satisfies the coverage contract for Quick tier by design; for Standard/Full it produces a `skipped` lane and health signal must fall back to references/provenance data at Judge time."
+      }
+    },
+    "curation": {
+      "phase": "discovery",
+      "stage": 3,
+      "question": "What do humans say the alternatives are?",
+      "adapter": "manual subagent: LibHunt URL-swap + awesome-/best-of list fetch",
+      "capability": "web_fetch",
+      "on_unavailable": {
+        "fallback": "general_web lane covers the same discovery question at reduced precision",
+        "lane_status": "unsupported",
+        "note": "Optional at every tier. Missing web_fetch degrades curation coverage to whatever general_web (web_search) still provides."
+      }
+    },
+    "github_code_reading": {
+      "phase": "shortlist_enrichment",
+      "stage": 3,
+      "question": "What does the code in a shortlisted repo actually do?",
+      "adapter": "manual subagent: octocode-mcp repo analysis and code search/reading",
+      "capability": "github_code_read",
+      "on_unavailable": {
+        "fallback": "architecture_qa (DeepWiki Q&A) as a lower-fidelity substitute",
+        "lane_status": "unsupported",
+        "note": "Optional. Never required at Quick or Standard; recommended but not required at Full ahead of hands_on_probe."
+      }
+    },
+    "architecture_qa": {
+      "phase": "shortlist_enrichment",
+      "stage": 3,
+      "question": "How is it built, above raw source (DeepWiki Q&A)?",
+      "adapter": "manual subagent: DeepWiki URL-swap (github.com -> deepwiki.com)",
+      "capability": "web_fetch",
+      "on_unavailable": {
+        "fallback": null,
+        "lane_status": "unsupported",
+        "note": "Optional map, never a verdict substitute per references/snowball-probe.md. Missing capability simply removes this lane; it never blocks a hunt."
+      }
+    },
+    "freshness": {
+      "phase": "discovery",
+      "stage": 3,
+      "question": "Did someone ship this in the last 30 days?",
+      "adapter": "last30days skill, or plain WebSearch for \"<vocabulary>\" plus the current year",
+      "capability": "last30days_skill",
+      "on_unavailable": {
+        "fallback": "web_search",
+        "lane_status": "degraded",
+        "note": "Documented fallback from references/lanes.md: never hard-fail this lane for a missing optional dependency; degrade to plain WebSearch instead."
+      }
+    },
+    "skills_ecosystem": {
+      "phase": "discovery",
+      "stage": 3,
+      "question": "Did someone already build this as an agent skill?",
+      "adapter": "npx skills search \"<vocabulary>\", or the skills.sh index",
+      "capability": "skills_index_search",
+      "on_unavailable": {
+        "fallback": "general_web lane search for \"<vocabulary>\" agent skill",
+        "lane_status": "unsupported",
+        "note": "Optional at every tier."
+      }
+    },
+    "general_web": {
+      "phase": "discovery",
+      "stage": 3,
+      "question": "What do essays/comparisons/discussions say?",
+      "adapter": "WebSearch",
+      "capability": "web_search",
+      "on_unavailable": {
+        "fallback": null,
+        "lane_status": "unsupported",
+        "note": "Optional discovery lane; absence narrows discovery coverage but never blocks a hunt on its own."
+      }
+    },
+    "standards_bodies": {
+      "phase": "discovery",
+      "stage": 3,
+      "hunt_kind": "concept",
+      "question": "Is this codified (ISO, INCOSE, IETF RFCs, W3C, NIST)?",
+      "adapter": "manual subagent: search the standards body's own catalog, not general web essays about it",
+      "capability": "web_search",
+      "on_unavailable": {
+        "fallback": null,
+        "lane_status": "unsupported",
+        "note": "Concept-hunt lane. Used in place of the code-discovery optional lanes (curation, skills_ecosystem) only when the hunt has no code to sweep, per references/lanes.md \"Concept hunts\"."
+      }
+    },
+    "framework_docs": {
+      "phase": "discovery",
+      "stage": 3,
+      "hunt_kind": "concept",
+      "question": "Did a mature framework already decide this?",
+      "adapter": "manual subagent: official guides and ADRs for the stack in play",
+      "capability": "web_fetch",
+      "on_unavailable": {
+        "fallback": "general_web lane",
+        "lane_status": "unsupported",
+        "note": "Concept-hunt lane; see standards_bodies note."
+      }
+    },
+    "academic_survey": {
+      "phase": "discovery",
+      "stage": 3,
+      "hunt_kind": "concept",
+      "question": "What does the literature call the shape (surveys)?",
+      "adapter": "manual subagent: Scholar / Semantic Scholar / recent survey papers",
+      "capability": "web_search",
+      "on_unavailable": {
+        "fallback": null,
+        "lane_status": "unsupported",
+        "note": "Concept-hunt lane; see standards_bodies note."
+      }
+    },
+    "hands_on_probe": {
+      "phase": "probe",
+      "stage": 5,
+      "question": "Does the artifact actually do what its README claims?",
+      "adapter": "isolated shallow clone, install, smoke-test, and load-bearing source read, no access to secrets/credentials/the working repo",
+      "capability": "sandbox_exec",
+      "on_unavailable": {
+        "fallback": "architecture_qa (DeepWiki) as a documented-but-weaker substitute; never a verdict on its own",
+        "lane_status": "unsupported",
+        "note": "Required at Full tier only, with no exceptions per references/snowball-probe.md. A Full-tier hunt with sandbox_exec unsupported cannot reach a verified-fit stopping rule; it must stop on `required_human_decision` and record the missing capability."
+      }
+    }
+  },
+  "tiers": {
+    "quick": {
+      "when": "Small script, easily reversed.",
+      "required_lanes": ["github", "registry"],
+      "optional_lanes": ["curation"],
+      "snowball": {"hops": 0, "note": "Skip snowballing entirely."},
+      "probe": {"required": false, "hands_on_clone": false, "architecture_qa_allowed": false},
+      "license_check_required": false,
+      "evidence_obligations": [
+        "Every candidate carries name, url, source_lane, and license from the required lanes.",
+        "No shortlist-enrichment or probe evidence is owed at this tier."
+      ],
+      "budgets": {
+        "seconds": 90,
+        "external_requests": 15,
+        "tokens": 15000,
+        "probes": 0,
+        "receipt_bytes": 50000
+      },
+      "stopping_rules": [
+        "sufficient_verified_fit",
+        "exhausted_bounded_coverage",
+        "budget_exhaustion_with_uncertainty",
+        "required_human_decision"
+      ],
+      "invocation": "python3 scripts/sweep.py --query \"<keywords>\" --lanes github,registry --limit 5 --no-scorecard"
+    },
+    "standard": {
+      "when": "Module or notable dependency.",
+      "required_lanes": ["github", "registry", "grep", "scorecard"],
+      "optional_lanes": ["curation", "github_code_reading", "architecture_qa", "freshness", "skills_ecosystem", "general_web"],
+      "snowball": {"hops": 1, "note": "1 hop, backward or forward, whichever the strongest hit's README suggests."},
+      "probe": {"required": false, "hands_on_clone": false, "architecture_qa_allowed": true},
+      "license_check_required": true,
+      "evidence_obligations": [
+        "Every candidate carries name, url, source_lane, license, stars, last_push, and scorecard (or an explicit skipped/degraded scorecard state) from the required lanes.",
+        "The top candidate carries a recorded license bucket (including AGPL/SSPL/no-LICENSE flags) before Judge.",
+        "The single snowball hop is recorded with its direction (backward or forward) and the observation it produced."
+      ],
+      "budgets": {
+        "seconds": 420,
+        "external_requests": 45,
+        "tokens": 90000,
+        "probes": 0,
+        "receipt_bytes": 250000
+      },
+      "stopping_rules": [
+        "sufficient_verified_fit",
+        "exhausted_bounded_coverage",
+        "budget_exhaustion_with_uncertainty",
+        "required_human_decision"
+      ],
+      "invocation": "python3 scripts/sweep.py --query \"<keywords>\" --lanes github,registry,grep,scorecard --limit 10"
+    },
+    "full": {
+      "when": "Subsystem, framework, or hard-to-reverse choice.",
+      "required_lanes": ["github", "registry", "grep", "scorecard", "hands_on_probe"],
+      "optional_lanes": ["curation", "github_code_reading", "architecture_qa", "freshness", "skills_ecosystem", "general_web"],
+      "snowball": {"hops_min": 2, "hops_max": 3, "note": "2-3 hops each direction, until hits stop turning up anything not already in the candidate list."},
+      "probe": {"required": true, "hands_on_clone": true, "architecture_qa_allowed": true},
+      "license_check_required": true,
+      "evidence_obligations": [
+        "All Standard-tier evidence obligations, plus:",
+        "The top 1-2 shortlisted candidates each carry a sandbox install/smoke-test receipt and a load-bearing source read before Judge.",
+        "python3 scripts/provenance.py --owner <login> is recorded for every shortlisted maintainer.",
+        "Freshness signal (last30days or WebSearch fallback) is recorded for the winning candidate."
+      ],
+      "budgets": {
+        "seconds": 1800,
+        "external_requests": 150,
+        "tokens": 350000,
+        "probes": 2,
+        "receipt_bytes": 1000000
+      },
+      "stopping_rules": [
+        "sufficient_verified_fit",
+        "exhausted_bounded_coverage",
+        "budget_exhaustion_with_uncertainty",
+        "required_human_decision"
+      ],
+      "invocation": "python3 scripts/sweep.py --query \"<keywords>\" --lanes github,registry,grep,scorecard --limit 10, then python3 scripts/provenance.py --owner <login1> --owner <login2> on every shortlisted maintainer"
+    }
+  },
+  "stopping_rules": {
+    "sufficient_verified_fit": "A candidate has been evaluated to the tier's evidence obligations and meets the pre-registered exclusion criteria and rubric threshold. Stop sweeping further lanes.",
+    "exhausted_bounded_coverage": "Every required lane for the tier has reported a terminal status (succeeded, degraded, failed, skipped, or unsupported) and every optional lane has been attempted or explicitly declined. No further coverage exists within the tier's lane set.",
+    "budget_exhaustion_with_uncertainty": "A budget ceiling (seconds, external_requests, tokens, probes, or receipt_bytes) is reached before sufficient fit is established. Stop immediately and record the residual uncertainty explicitly; never silently extend the budget.",
+    "required_human_decision": "The evidence trends toward a BUILD verdict, a required capability is unsupported at a tier where it is required, or authority for a non-trivial reuse route is needed. Stop automated execution and hand off to the human gate (SKILL.md Stage 7)."
+  }
+}
