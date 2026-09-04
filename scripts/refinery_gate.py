@@ -29,7 +29,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 from scripts import fable_review_gate
 
 DEFAULT_JOBCTL = Path.home() / "workplace" / "gc-router" / "bin" / "jobctl"
-DEFAULT_BASE_BRANCH = "p1-night"
+DEFAULT_TARGET = "p1-night"
 MAX_ROUND = 3
 MAX_ATTEMPT = 3
 QUALITY_GATE_TIMEOUT_SECONDS = 600
@@ -48,20 +48,37 @@ QUALITY_GATES: tuple[tuple[list[str], str], ...] = (
 )
 
 
-def refinery_identity(agent: str | None) -> bool:
-    """True when $GC_AGENT names this session's role as the refinery.
+def classify_gc_agent(agent: str | None) -> str:
+    """Classify $GC_AGENT for the fail-closed refinery-identity guard.
 
     Gastown session identities look like ``<rig>/<binding_prefix>refinery``
     (e.g. ``deja-vu/gastown.refinery``); there is no separate GC_ROLE env
     var in the gastown pack (grep confirms only $GC_AGENT is canonical --
     see mol-refinery-patrol's validate-identity step and
     agents/refinery/prompt.template.md).
+
+    Returns "refinery" when the identity is this session's role, "other"
+    when the identity is set and parses to some other role, or "unknown"
+    when the identity is unset, blank, or does not parse into a role token
+    at all -- conductor ruling: fail closed (refuse) on unknown identity
+    rather than silently skipping like an actually-recognized non-refinery
+    agent would.
     """
+    if agent is None:
+        return "unknown"
+    agent = agent.strip()
     if not agent:
-        return False
+        return "unknown"
     suffix = agent.rsplit("/", 1)[-1]
-    role = suffix.rsplit(".", 1)[-1]
-    return role == "refinery"
+    role = suffix.rsplit(".", 1)[-1].strip()
+    if not role:
+        return "unknown"
+    return "refinery" if role == "refinery" else "other"
+
+
+def refinery_identity(agent: str | None) -> bool:
+    """True when $GC_AGENT names this session's role as the refinery."""
+    return classify_gc_agent(agent) == "refinery"
 
 
 def resolve_bead_id(
@@ -189,9 +206,22 @@ def select_round_attempt(
             continue
         job_id = metadata.get("review_delegate_job_id") or ""
         match = JOB_ID_ROUND_ATTEMPT.search(job_id)
-        if not match:
+        if match:
+            used.add((int(match.group("round")), int(match.group("attempt"))))
             continue
-        used.add((int(match.group("round")), int(match.group("attempt"))))
+        # Matching artifact/governing hash but an unparseable delegate job
+        # id: we cannot identify which attempt slot it occupies, so
+        # conservatively consume every attempt of its recorded round
+        # (falling back to round 1 if even that is missing/invalid)
+        # instead of silently treating the record as unused.
+        try:
+            fallback_round = int(metadata.get("review_round", 0))
+        except (TypeError, ValueError):
+            fallback_round = 0
+        if fallback_round not in range(1, MAX_ROUND + 1):
+            fallback_round = 1
+        for attempt_number in range(1, MAX_ATTEMPT + 1):
+            used.add((fallback_round, attempt_number))
     for round_number in range(1, MAX_ROUND + 1):
         for attempt_number in range(1, MAX_ATTEMPT + 1):
             if (round_number, attempt_number) not in used:
@@ -316,13 +346,14 @@ def write_review_record(root: Path, bead_id: str, review: dict[str, Any]) -> str
     """Promote one verified pass review into a closed bd Bead the local
     coverage diagnostic (scripts/fable_review_gate.py) can see.
 
-    review_permission is hardcoded "read-only" because this script only ever
-    prepares reviews through scripts/prepare_fable_review.py, whose manifest
-    permissions block (shell=none, network=none, write_roots=[]) is a fixed
-    structural invariant, not caller-configurable -- there is no code path
-    here that could produce a review under a different permission envelope.
-    review_permission_attested is "true" because this function only runs
-    after jobctl verify-review has reported evidence_verified=true.
+    review_permission and review_permission_attested come from the
+    verify-review evidence itself (review["permission"] /
+    review["permission_attested"]) rather than being asserted here -- this
+    function only runs after jobctl verify-review has reported
+    evidence_verified=true, but the permission envelope it verified is
+    whatever the delegate job actually ran under, not an assumption made by
+    this script. If verify-review does not expose those fields, they are
+    omitted rather than asserted.
     """
     metadata = {
         "review_schema": review["schema_version"],
@@ -336,12 +367,14 @@ def write_review_record(root: Path, bead_id: str, review: dict[str, Any]) -> str
         "review_launch_envelope_sha256": review["launch_envelope_sha256"],
         "review_model": review["reviewer"]["model"],
         "review_target": review["reviewer"]["target"],
-        "review_permission": "read-only",
-        "review_permission_attested": "true",
         "review_verdict": review["verdict"],
         "review_round": str(review["round"]),
         "review_findings_unresolved": str(len(review.get("findings") or [])),
     }
+    if "permission" in review:
+        metadata["review_permission"] = review["permission"]
+    if "permission_attested" in review:
+        metadata["review_permission_attested"] = str(review["permission_attested"]).lower()
     completed = subprocess.run(
         [
             "bd",
@@ -397,10 +430,36 @@ def check_final_coverage(root: Path, governed_changed: list[str]) -> tuple[bool,
         report = json.loads(completed.stdout)
     except json.JSONDecodeError as error:
         raise RuntimeError(f"scripts/fable_review_gate.py did not return JSON: {error}") from error
+
     covered = set(report.get("covered", []))
-    uncovered = [module for module in governed_changed if module not in covered]
-    if uncovered:
-        return False, f"coverage-gate-uncovered:{','.join(uncovered)}"
+    missing = set(report.get("missing", []))
+    missing_contracts = set(report.get("missing_contracts", []))
+    problems = report.get("problems", []) or []
+
+    uncovered = sorted(module for module in governed_changed if module not in covered)
+    still_missing = sorted(module for module in governed_changed if module in missing)
+    uncontracted = sorted(module for module in governed_changed if module in missing_contracts)
+    # Each problems[] entry is prefixed "<module> (<review-id>): <detail>" by
+    # fable_review_gate._review_problems -- match on that prefix so a
+    # changed module with a stale/invalid review is caught directly, not
+    # only inferred from covered-set membership.
+    stale_or_invalid = sorted(
+        module
+        for module in governed_changed
+        if any(problem.startswith(f"{module} (") for problem in problems)
+    )
+
+    if uncovered or still_missing or uncontracted or stale_or_invalid:
+        parts = []
+        if uncovered:
+            parts.append(f"uncovered={','.join(uncovered)}")
+        if still_missing:
+            parts.append(f"missing={','.join(still_missing)}")
+        if uncontracted:
+            parts.append(f"uncontracted={','.join(uncontracted)}")
+        if stale_or_invalid:
+            parts.append(f"stale={','.join(stale_or_invalid)}")
+        return False, f"coverage-gate-failed:{';'.join(parts)}"
     return True, ""
 
 
@@ -408,7 +467,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=REPOSITORY_ROOT)
     parser.add_argument("--bead", help="Work bead id. Overrides env and branch-name inference.")
-    parser.add_argument("--base-branch", default=DEFAULT_BASE_BRANCH)
+    parser.add_argument(
+        "--target",
+        default=DEFAULT_TARGET,
+        help="Branch this candidate merges into. Diffs changed files against "
+        "origin/<target> -- there is no separate base-branch notion.",
+    )
     parser.add_argument("--jobctl", type=Path, default=DEFAULT_JOBCTL)
     parser.add_argument(
         "--force",
@@ -423,10 +487,6 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root = args.root.resolve()
 
-    if not args.force and not refinery_identity(os.environ.get("GC_AGENT")):
-        print("REFINERY_GATE: skip")
-        return 0
-
     def finish(status: str, reason: str, extra: dict[str, Any] | None = None) -> int:
         print(f"REFINERY_GATE: {status} reason={reason}")
         if args.json:
@@ -436,75 +496,95 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if status == "allow" else 1
 
-    passed, gate_reason = run_quality_gates(root)
-    if not passed:
-        return finish("refuse", gate_reason)
+    if not args.force:
+        identity = classify_gc_agent(os.environ.get("GC_AGENT"))
+        if identity == "other":
+            print("REFINERY_GATE: skip")
+            return 0
+        if identity == "unknown":
+            # Conductor ruling: fail closed rather than fail open -- a
+            # missing or unrecognized identity must never be treated like a
+            # recognized non-refinery agent skipping past the gate.
+            return finish("refuse", "identity-unknown")
 
     try:
-        changed = changed_files(root, f"origin/{args.base_branch}")
-    except RuntimeError as error:
-        return finish("refuse", str(error))
-
-    contracts = fable_review_gate.load_canonical_module_contracts(root)
-    modules = fable_review_gate.discover_modules(root)
-    governed_changed = sorted(module for module in changed if module in modules)
-
-    bead_id = None
-    if governed_changed:
-        bead_id = resolve_bead_id(args.bead, dict(os.environ), current_branch(root))
-        if not bead_id:
-            return finish("refuse", "missing-bead-id")
-
-    for module in governed_changed:
-        contract = contracts.get(module)
-        if contract is None:
-            return finish("refuse", f"no-contract:{module}")
-
-        artifact_sha256 = hashlib.sha256(
-            fable_review_gate.read_governed_bytes(root, module)
-        ).hexdigest()
-        governing_sha256 = fable_review_gate.governing_contract_sha256(root, module, contract)
+        passed, gate_reason = run_quality_gates(root)
+        if not passed:
+            return finish("refuse", gate_reason)
 
         try:
-            records = load_module_review_records(root, module, bead_id)
-        except (RuntimeError, ValueError, json.JSONDecodeError) as error:
-            return finish("refuse", f"review-lookup-failed:{module}:{error}")
-
-        selection = select_round_attempt(records, artifact_sha256, governing_sha256)
-        if selection is None:
-            return finish("refuse", f"round-attempt-exhausted:{module}")
-        round_number, attempt_number = selection
-
-        try:
-            submission = submit_fable_review(root, module, round_number, attempt_number, args.jobctl)
-            verification = verify_fable_review(
-                root, submission["job_id"], module, bead_id, round_number, args.jobctl
-            )
+            changed = changed_files(root, f"origin/{args.target}")
         except RuntimeError as error:
-            return finish("refuse", f"review-job-failed:{module}:{error}")
+            return finish("refuse", str(error))
 
-        review = verification.get("review") or {}
-        if not verification.get("evidence_verified") or review.get("verdict") != "pass":
+        contracts = fable_review_gate.load_canonical_module_contracts(root)
+        modules = fable_review_gate.discover_modules(root)
+        governed_changed = sorted(module for module in changed if module in modules)
+
+        bead_id = None
+        if governed_changed:
+            bead_id = resolve_bead_id(args.bead, dict(os.environ), current_branch(root))
+            if not bead_id:
+                return finish("refuse", "missing-bead-id")
+
+        for module in governed_changed:
+            contract = contracts.get(module)
+            if contract is None:
+                return finish("refuse", f"no-contract:{module}")
+
+            artifact_sha256 = hashlib.sha256(
+                fable_review_gate.read_governed_bytes(root, module)
+            ).hexdigest()
+            governing_sha256 = fable_review_gate.governing_contract_sha256(root, module, contract)
+
             try:
-                append_findings_note(root, bead_id, module, review)
-            except RuntimeError:
-                pass  # best-effort note; the refusal below stands regardless
-            return finish("refuse", f"review-verdict:{module}:{review.get('verdict')}")
+                records = load_module_review_records(root, module, bead_id)
+            except (RuntimeError, ValueError, json.JSONDecodeError) as error:
+                return finish("refuse", f"review-lookup-failed:{module}:{error}")
 
-        try:
-            write_review_record(root, bead_id, review)
-        except RuntimeError as error:
-            return finish("refuse", f"review-record-write-failed:{module}:{error}")
+            selection = select_round_attempt(records, artifact_sha256, governing_sha256)
+            if selection is None:
+                return finish("refuse", f"round-attempt-exhausted:{module}")
+            round_number, attempt_number = selection
 
-    if governed_changed:
-        try:
-            coverage_ok, coverage_reason = check_final_coverage(root, governed_changed)
-        except RuntimeError as error:
-            return finish("refuse", f"coverage-recheck-failed:{error}")
-        if not coverage_ok:
-            return finish("refuse", coverage_reason)
+            try:
+                submission = submit_fable_review(root, module, round_number, attempt_number, args.jobctl)
+                verification = verify_fable_review(
+                    root, submission["job_id"], module, bead_id, round_number, args.jobctl
+                )
+            except RuntimeError as error:
+                return finish("refuse", f"review-job-failed:{module}:{error}")
 
-    return finish("allow", "ok", {"governed_changed": governed_changed})
+            review = verification.get("review") or {}
+            if not verification.get("evidence_verified") or review.get("verdict") != "pass":
+                try:
+                    append_findings_note(root, bead_id, module, review)
+                    note_status = "note-appended"
+                except RuntimeError as error:
+                    note_status = f"note-append-failed:{error}"
+                return finish(
+                    "refuse", f"review-verdict:{module}:{review.get('verdict')}:{note_status}"
+                )
+
+            try:
+                write_review_record(root, bead_id, review)
+            except RuntimeError as error:
+                return finish("refuse", f"review-record-write-failed:{module}:{error}")
+
+        if governed_changed:
+            try:
+                coverage_ok, coverage_reason = check_final_coverage(root, governed_changed)
+            except RuntimeError as error:
+                return finish("refuse", f"coverage-recheck-failed:{error}")
+            if not coverage_ok:
+                return finish("refuse", coverage_reason)
+
+        return finish("allow", "ok", {"governed_changed": governed_changed})
+    except Exception as error:  # noqa: BLE001 -- fail-closed output contract:
+        # every exit path must print exactly one REFINERY_GATE line, even
+        # for exceptions (I/O errors, malformed contract data) that none of
+        # the specific except clauses above catch.
+        return finish("refuse", f"internal-error:{error}")
 
 
 if __name__ == "__main__":
