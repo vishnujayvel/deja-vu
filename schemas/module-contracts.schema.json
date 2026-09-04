@@ -26,7 +26,7 @@
           "path": {
             "type": "string",
             "minLength": 1,
-            "pattern": "^(?:SKILL\\.md|docs/design\\.md|evals/run_evals\\.py|(?:scripts|src|deja_vu)/(?:[^/]+/)*[^/]+\\.(?:py|sh)|(?:schemas|contracts|policy)/(?:[^/]+/)*[^/]+\\.json)$"
+            "pattern": "^(?:SKILL\\.md|docs/design\\.md|evals/run_evals\\.py|(?:scripts|src|deja_vu)/(?:(?!\\.\\.?/)[^/]+/)*[^/]+\\.(?:py|sh)|(?:schemas|contracts|policy)/(?:(?!\\.\\.?/)[^/]+/)*[^/]+\\.json)$"
           },
           "contract": {
             "type": "string",
