@@ -251,7 +251,7 @@ def test_write_review_record_omits_permission_fields_when_verify_review_lacks_th
 
 
 def test_skip_when_gc_agent_identifies_non_refinery(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("GC_AGENT", "deja-vu/gastown.polecat")
+    monkeypatch.setenv("GC_AGENT", "deja-vu/gastown.furiosa")
 
     def forbidden(*args, **kwargs):
         raise AssertionError("must not run any subprocess when skipping")
@@ -690,18 +690,17 @@ def test_check_final_coverage_allows_when_fully_covered(tmp_path, monkeypatch):
     assert reason == ""
 
 
-# --- round-2 finding 1: closed allowlist for non-refinery identities -------
+# --- round-3 attempt-2 finding 1: positive allowlist for polecat pool ------
 
 
 @pytest.mark.parametrize(
     "agent",
     [
-        "deja-vu/gastown.polecat",
-        "deja-vu/gastown.furiosa",  # real per-instance polecat alias
-        "deja-vu/gastown.vg-1jp",
+        "deja-vu/gastown.furiosa",
+        "deja-vu/gastown.nux",
     ],
 )
-def test_classify_gc_agent_recognizes_polecat_aliases_as_other(agent):
+def test_classify_gc_agent_recognizes_polecat_pool_aliases_as_other(agent):
     assert refinery_gate.classify_gc_agent(agent) == "other"
 
 
@@ -710,27 +709,34 @@ def test_classify_gc_agent_recognizes_polecat_aliases_as_other(agent):
     [
         "totally-bogus",
         "rig/gastown.notarole",
+        "deja-vu/gastown.polecat",  # the pool template name, not a pool alias
         "deja-vu/gastown.witness",
         "deja-vu/gastown.mayor",
         "deja-vu/gastown.deacon",
+        "deja-vu/gastown.claude-fable-review",
+        "deja-vu/gastown.agy-pro",
+        "deja-vu/gastown.vg-1jp",  # unlisted alias shape, not in POLECAT_POOL
         "deja-vu/gastown.",
         "other-rig/gastown.polecat",
+        "other-rig/gastown.furiosa",
     ],
 )
 def test_classify_gc_agent_refuses_unrecognized_identities_as_unknown(agent):
-    """Round-2 finding 1: only a polecat-shaped identity for this rig is
-    "other" (skip); a reserved role literal, another rig, or an unparseable
-    value must all classify as "unknown" (refuse) instead."""
+    """Round-3 attempt-2 finding 1: "other" (skip) is a positive allowlist of
+    exact polecat-pool identities (POLECAT_IDENTITIES); every other value --
+    including role literals the previous denylist omitted
+    (claude-fable-review, agy-pro), the pool template name itself
+    ("polecat"), an unlisted alias, another rig, or an unparseable value --
+    classifies as "unknown" (refuse) instead."""
     assert refinery_gate.classify_gc_agent(agent) == "unknown"
 
 
-def test_skip_when_gc_agent_is_a_polecat_alias_not_the_literal_word(
-    tmp_path, monkeypatch, capsys
+@pytest.mark.parametrize("alias", ["furiosa", "nux"])
+def test_skip_when_gc_agent_is_a_polecat_pool_alias(
+    tmp_path, monkeypatch, capsys, alias
 ):
-    """Real polecat sessions carry a per-instance alias (e.g. "furiosa"), not
-    the literal string "polecat" -- pin that the closed allowlist recognizes
-    the shape, not a hardcoded name."""
-    monkeypatch.setenv("GC_AGENT", "deja-vu/gastown.furiosa")
+    """Every alias in POLECAT_POOL must skip, not just one hardcoded name."""
+    monkeypatch.setenv("GC_AGENT", f"deja-vu/gastown.{alias}")
 
     def forbidden(*args, **kwargs):
         raise AssertionError("must not run any subprocess when skipping")
@@ -747,19 +753,24 @@ def test_skip_when_gc_agent_is_a_polecat_alias_not_the_literal_word(
     "agent",
     [
         "totally-bogus",
+        "deja-vu/gastown.polecat",
         "deja-vu/gastown.witness",
         "deja-vu/gastown.mayor",
         "deja-vu/gastown.deacon",
+        "deja-vu/gastown.claude-fable-review",
+        "deja-vu/gastown.agy-pro",
+        "deja-vu/gastown.vg-1jp",
         "other-rig/gastown.polecat",
     ],
 )
 def test_refuse_when_gc_agent_is_unrecognized_not_silently_skipped(
     tmp_path, monkeypatch, capsys, agent
 ):
-    """Round-2 finding 1: an identity that is neither the refinery nor a
-    recognized non-refinery pattern must refuse, not skip with exit 0 --
-    previously any non-empty trailing token classified as a generic "other"
-    role and skipped past the gate."""
+    """Round-3 attempt-2 finding 1: an identity that is neither the refinery
+    nor an exact polecat-pool alias must refuse, not skip with exit 0 --
+    previously any ``deja-vu/gastown.<alias>`` not in a hand-maintained
+    reserved-role denylist skipped past the gate, including
+    claude-fable-review and agy-pro, which the denylist omitted."""
     monkeypatch.setenv("GC_AGENT", agent)
 
     def forbidden(*args, **kwargs):
@@ -773,7 +784,8 @@ def test_refuse_when_gc_agent_is_unrecognized_not_silently_skipped(
     assert "REFINERY_GATE: refuse reason=identity-unknown" in capsys.readouterr().out
 
 
-# --- round-2 finding 2: usage errors print the REFINERY_GATE line ----------
+# --- round-2 finding 2 / round-3 attempt-2 finding 2: every argparse exit --
+# --- prints the REFINERY_GATE line -----------------------------------------
 
 
 def test_usage_error_on_unrecognized_flag_prints_refinery_gate_line(capsys):
@@ -792,11 +804,25 @@ def test_usage_error_on_missing_option_value_prints_refinery_gate_line(capsys):
     assert "REFINERY_GATE: refuse reason=usage" in out
 
 
-def test_help_flag_exits_cleanly_without_usage_refusal(capsys):
-    """A clean --help exit (code 0) is not a usage error and must not be
-    swallowed into a REFINERY_GATE: refuse line."""
-    with pytest.raises(SystemExit) as excinfo:
-        refinery_gate.main(["--help"])
+@pytest.mark.parametrize("flag", ["--help", "-h"])
+def test_help_flag_prints_refinery_gate_refuse_line_and_exits_two(capsys, flag):
+    """Round-3 attempt-2 finding 2: --help/-h is a clean argparse exit(0),
+    but no exit path may skip the REFINERY_GATE line or leave a 0 (merge
+    allowed) exit code on the table. main() must not re-raise the
+    SystemExit(0); it must print the refuse line and return 2."""
+    code = refinery_gate.main([flag])
 
-    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert code == 2
+    # argparse's own --help text is the module docstring, which mentions the
+    # REFINERY_GATE line format as documentation -- assert the actual
+    # appended refusal is the final printed line, not just present anywhere.
+    assert out.rstrip("\n").splitlines()[-1] == "REFINERY_GATE: refuse reason=help"
+
+
+def test_help_flag_does_not_print_usage_refusal(capsys):
+    """The help path is distinct from the generic usage-error refusal."""
+    code = refinery_gate.main(["--help"])
+
+    assert code == 2
     assert "REFINERY_GATE: refuse reason=usage" not in capsys.readouterr().out

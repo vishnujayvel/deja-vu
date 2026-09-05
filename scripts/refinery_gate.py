@@ -39,19 +39,21 @@ REVIEW_JOB_TIMEOUT_SECONDS = 900
 # job id it mints (job-fable-<slug>-<artifact12>-<governing12>-rR-aA).
 JOB_ID_ROUND_ATTEMPT = re.compile(r"-r(?P<round>[1-3])-a(?P<attempt>[1-3])$")
 
-# Closed allowlist for the "other" (skip) identity bucket -- conductor ruling
-# (deja-vu-5x6.3, round 2 finding 1): the ONLY recognized non-refinery
-# gastown role pattern for this rig is a polecat session, whose $GC_AGENT
-# looks like ``deja-vu/gastown.<alias>`` where ``<alias>`` is the polecat's
-# per-instance name (e.g. ``furiosa``), confirmed against this session's own
-# $GC_AGENT and city.toml's rig-scoped [[patches.agent]] entries (dir =
-# "deja-vu": polecat, refinery, witness, claude-fable-review, agy-pro).
-# Anything matching this shape whose alias is itself one of the other known
-# role literals is NOT a polecat instance and must NOT skip -- it refuses
-# with identity-unknown along with every other unrecognized shape (unset,
-# blank, another rig, or unparseable).
-RIG_AGENT_PATTERN = re.compile(r"^deja-vu/gastown\.(?P<role>[^./]+)$")
-RESERVED_NON_POLECAT_ROLES = frozenset({"refinery", "witness", "mayor", "deacon"})
+# Positive allowlist for the "other" (skip) identity bucket -- conductor
+# ruling (deja-vu-5x6.4, round 3 attempt 2 finding 1): the ONLY identities
+# that skip (rather than refuse) are polecat sessions in this rig's polecat
+# pool. city.toml's rig-scoped [[patches.agent]] entry (dir = "deja-vu",
+# name = "polecat", max_active_sessions = 2) spins up two per-instance
+# aliases for this rig -- furiosa and nux -- and those are the only
+# non-refinery identities recognized as safe to skip. Every other value --
+# unset, blank, another rig, an unparseable value, or any other role literal
+# this rig knows about (refinery is handled separately below; witness,
+# mayor, deacon, claude-fable-review, agy-pro, "polecat" itself, or anything
+# unlisted) -- refuses with identity-unknown. This is a single positive
+# allowlist, not a "recognized minus reserved" computation, so there is
+# exactly one source of truth for which identities may skip.
+POLECAT_POOL = ("furiosa", "nux")
+POLECAT_IDENTITIES = frozenset(f"deja-vu/gastown.{name}" for name in POLECAT_POOL)
 
 # Order matches the bead contract: pytest, doctor, offline evals, sanitizer.
 QUALITY_GATES: tuple[tuple[list[str], str], ...] = (
@@ -76,18 +78,19 @@ def classify_gc_agent(agent: str | None) -> str:
 
     Returns "refinery" when the identity is this session's role.
 
-    Otherwise, this is a CLOSED ALLOWLIST (conductor ruling, deja-vu-5x6.3
-    round 2 finding 1): "other" is returned ONLY when the identity matches
-    this rig's polecat-session shape ``deja-vu/gastown.<alias>`` and
-    ``<alias>`` is not itself one of the other known non-polecat role
-    literals (RESERVED_NON_POLECAT_ROLES). Every other shape -- unset,
-    blank, another rig, a bare/unparseable value, or one of those reserved
-    role literals -- returns "unknown" and must refuse. The previous
-    implementation classified any non-empty trailing token as "other" and
-    let it skip (exit 0, merge allowed by the caller's convention), which
-    silently passed garbled or unrecognized identities; failing closed here
-    means an identity must positively match a known-safe pattern to skip,
-    not merely fail to match "refinery".
+    Otherwise, this is a POSITIVE ALLOWLIST (conductor ruling,
+    deja-vu-5x6.4, round 3 attempt 2 finding 1): "other" is returned ONLY
+    when the identity is an exact match against POLECAT_IDENTITIES --
+    ``deja-vu/gastown.<name>`` for a ``<name>`` in POLECAT_POOL. Every other
+    value -- unset, blank, another rig, an unparseable value, or any other
+    role literal (including "polecat" itself, "witness", "mayor", "deacon",
+    "claude-fable-review", or "agy-pro") -- returns "unknown" and must
+    refuse. The previous implementation matched any ``deja-vu/gastown.*``
+    shape not in a hand-maintained reserved-role denylist, which silently
+    skipped identities the denylist didn't know about
+    (``claude-fable-review``, ``agy-pro``); requiring an exact match against
+    a positive allowlist means an unlisted identity can never skip by
+    omission.
     """
     if agent is None:
         return "unknown"
@@ -98,8 +101,7 @@ def classify_gc_agent(agent: str | None) -> str:
     role = suffix.rsplit(".", 1)[-1].strip()
     if role == "refinery":
         return "refinery"
-    match = RIG_AGENT_PATTERN.fullmatch(agent)
-    if match and match.group("role") not in RESERVED_NON_POLECAT_ROLES:
+    if agent in POLECAT_IDENTITIES:
         return "other"
     return "unknown"
 
@@ -519,11 +521,15 @@ def main(argv: list[str] | None = None) -> int:
         # bad invocation (e.g. an unrecognized flag or an invalid --root
         # value) -- that path bypasses the try/except below entirely, so the
         # fixed one-line output contract must be honored here too. A clean
-        # --help/--version exit (code 0) is not a usage error; let it through
-        # unchanged since argparse has already printed its own output.
+        # --help/--version exit (code 0) is not a usage error, but no exit
+        # path may skip the REFINERY_GATE line or signal "0 = merge allowed"
+        # (conductor ruling, deja-vu-5x6.4 round 3 attempt 2 finding 2):
+        # argparse has already printed the help/version text, so this only
+        # adds the required line and turns the exit into an explicit refusal.
         code = error.code if isinstance(error.code, int) else 1
         if code == 0:
-            raise
+            print("REFINERY_GATE: refuse reason=help")
+            return 2
         print("REFINERY_GATE: refuse reason=usage")
         return 1
     root = args.root.resolve()
