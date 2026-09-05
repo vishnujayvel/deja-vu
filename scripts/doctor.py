@@ -15,6 +15,7 @@ Read-only: never installs anything, never prints secret values
 (presence/absence only).
 """
 
+import importlib.util
 import json
 import os
 import shutil
@@ -94,6 +95,59 @@ def check_python():
         record("PASS", "python3", f"{v.major}.{v.minor}.{v.micro}")
     else:
         record("FAIL", "python3", f"{v.major}.{v.minor} found; 3.9+ required")
+
+
+def check_refinery_gate(root=ROOT):
+    """Required: scripts/refinery_gate.py must exist, import cleanly (no side
+    effects), declare POLECAT_POOL and POLECAT_IDENTITIES, and be listed in
+    contracts/module-contracts.json. This is the refinery's pre-merge gate --
+    if it's broken or unregistered, merges to p1-night proceed unreviewed.
+    """
+    gate_path = os.path.join(root, "scripts", "refinery_gate.py")
+    if not os.path.isfile(gate_path):
+        record("FAIL", "refinery-gate", "missing scripts/refinery_gate.py")
+        return
+
+    spec = importlib.util.spec_from_file_location("_doctor_refinery_gate_check", gate_path)
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as e:
+        record("FAIL", "refinery-gate", f"does not import cleanly: {e}")
+        return
+
+    missing_attrs = [
+        name for name in ("POLECAT_POOL", "POLECAT_IDENTITIES") if not hasattr(module, name)
+    ]
+    if missing_attrs:
+        record("FAIL", "refinery-gate", f"missing required attribute(s): {', '.join(missing_attrs)}")
+        return
+
+    contracts_path = os.path.join(root, "contracts", "module-contracts.json")
+    try:
+        with open(contracts_path) as f:
+            contracts = json.load(f)
+    except Exception as e:
+        record("FAIL", "refinery-gate", f"could not read contracts/module-contracts.json: {e}")
+        return
+
+    has_entry = any(
+        isinstance(m, dict) and m.get("path") == "scripts/refinery_gate.py"
+        for m in contracts.get("modules", [])
+    )
+    if not has_entry:
+        record(
+            "FAIL",
+            "refinery-gate",
+            "scripts/refinery_gate.py missing from contracts/module-contracts.json",
+        )
+        return
+
+    record(
+        "PASS",
+        "refinery-gate",
+        "present, imports cleanly, declares polecat pool, contract entry present",
+    )
 
 
 def check_github_lane():
@@ -195,6 +249,7 @@ def check_last30days():
 def main():
     check_python()
     check_deja_vu_skill()
+    check_refinery_gate()
     check_github_lane()
     check_scorecard()
     check_grep_app()
