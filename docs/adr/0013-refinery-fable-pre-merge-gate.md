@@ -197,3 +197,8 @@ scoped to a separate bead under the `deja-vu-5x6` epic.
   `test_command` / `lint_command` / `build_command` `formula_vars`
   convention this gate is meant to be wired into.
 - `deja-vu-5x6` (epic) and `deja-vu-5x6.1` (this bead).
+
+## Status
+
+Refinery re-enabled 2026-09-04. `build_command` runs
+`scripts/refinery_gate.py`. First merge landed through the refinery.
