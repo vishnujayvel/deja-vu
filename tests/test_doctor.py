@@ -66,8 +66,25 @@ def test_refinery_gate_missing_declarations_fails(tmp_path, monkeypatch):
     assert "POLECAT_IDENTITIES" in detail
 
 
-def test_refinery_gate_import_error_fails(tmp_path, monkeypatch):
+def test_refinery_gate_syntax_error_fails(tmp_path, monkeypatch):
     make_workspace(tmp_path, gate_source="def broken(\n")
     level, name, detail = run_check(monkeypatch, tmp_path)
     assert level == "FAIL"
-    assert "does not import cleanly" in detail
+    assert "does not parse as valid Python" in detail
+
+
+def test_refinery_gate_never_imports_or_execs_gate_file(tmp_path, monkeypatch):
+    """The check is a static AST read -- it must never import or exec the
+    gate script, since that would run its top-level code (and write
+    __pycache__) as a side effect of a read-only diagnostic."""
+    gate_source = (
+        'import sys\n'
+        'sys.modules["_doctor_refinery_gate_should_not_run"] = True\n'
+        + GATE_SOURCE
+    )
+    make_workspace(tmp_path, gate_source=gate_source)
+    level, name, detail = run_check(monkeypatch, tmp_path)
+    assert level == "PASS"
+    assert "_doctor_refinery_gate_should_not_run" not in __import__("sys").modules
+    pycache = tmp_path / "scripts" / "__pycache__"
+    assert not pycache.exists()
