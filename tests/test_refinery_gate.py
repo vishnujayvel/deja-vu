@@ -183,9 +183,7 @@ def _make_review(artifact_sha256, governing_sha256, **overrides):
 def test_write_review_record_metadata_satisfies_fable_review_gate(tmp_path, monkeypatch):
     make_workspace(tmp_path)
     artifact_sha256, governing_sha256 = module_hashes(tmp_path)
-    review = _make_review(
-        artifact_sha256, governing_sha256, permission="read-only", permission_attested=True
-    )
+    review = _make_review(artifact_sha256, governing_sha256)
 
     captured = {}
 
@@ -197,7 +195,9 @@ def test_write_review_record_metadata_satisfies_fable_review_gate(tmp_path, monk
 
     monkeypatch.setattr(refinery_gate.subprocess, "run", fake_run)
 
-    created_id = refinery_gate.write_review_record(tmp_path, "deja-vu-5x6.1", review)
+    created_id = refinery_gate.write_review_record(
+        tmp_path, "deja-vu-5x6.1", review, evidence_verified=True, release_eligible=True
+    )
 
     assert created_id == "deja-vu-review-99"
     assert captured["metadata"]["review_permission"] == "read-only"
@@ -213,13 +213,20 @@ def test_write_review_record_metadata_satisfies_fable_review_gate(tmp_path, monk
     assert report["covered"] == [MODULE]
 
 
-def test_write_review_record_omits_permission_fields_when_verify_review_lacks_them(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize(
+    ("evidence_verified", "release_eligible"),
+    [
+        (False, True),
+        (True, False),
+        (False, False),
+    ],
+)
+def test_write_review_record_omits_permission_fields_when_not_both_verifier_attested(
+    tmp_path, monkeypatch, evidence_verified, release_eligible
 ):
     make_workspace(tmp_path)
     artifact_sha256, governing_sha256 = module_hashes(tmp_path)
     review = _make_review(artifact_sha256, governing_sha256)
-    assert "permission" not in review and "permission_attested" not in review
 
     captured = {}
 
@@ -231,11 +238,19 @@ def test_write_review_record_omits_permission_fields_when_verify_review_lacks_th
 
     monkeypatch.setattr(refinery_gate.subprocess, "run", fake_run)
 
-    refinery_gate.write_review_record(tmp_path, "deja-vu-5x6.1", review)
+    refinery_gate.write_review_record(
+        tmp_path,
+        "deja-vu-5x6.1",
+        review,
+        evidence_verified=evidence_verified,
+        release_eligible=release_eligible,
+    )
 
     assert "review_permission" not in captured["metadata"]
     assert "review_permission_attested" not in captured["metadata"]
-    # Undeclared permission evidence must not silently count as coverage.
+    # Undeclared permission evidence must not silently count as coverage --
+    # the review is treated as not covering, so the refinery gate's final
+    # coverage recheck refuses.
     record = {
         "id": "deja-vu-review-99",
         "status": "closed",
@@ -401,8 +416,11 @@ def test_round_attempt_exhausted_refuses_without_calling_jobctl(tmp_path, monkey
     assert code == 1
 
 
-def _fake_run_full_review(module_path, verdict, findings=None):
+def _fake_run_full_review(module_path, verdict, findings=None, release_eligible=None):
     findings = findings or []
+    if release_eligible is None:
+        release_eligible = verdict == "pass"
+    created_records: list[dict] = []
 
     def fake_run(command, cwd=None, capture_output=True, text=True, check=False, timeout=None):
         gate = _quality_gates_pass(command)
@@ -465,32 +483,73 @@ def _fake_run_full_review(module_path, verdict, findings=None):
                     {
                         "schema_version": "gc-router.deja-vu-review-verification/v1",
                         "evidence_verified": True,
-                        "release_eligible": verdict == "pass",
+                        "release_eligible": release_eligible,
                         "review": review,
                     }
                 ),
             )
         if command[:2] == ["bd", "create"]:
-            return FakeCompleted(0, json.dumps({"id": "deja-vu-review-99"}))
+            metadata = json.loads(command[command.index("--metadata") + 1])
+            record_id = f"deja-vu-review-{99 + len(created_records)}"
+            created_records.append(
+                {
+                    "id": record_id,
+                    "status": "closed",
+                    "labels": ["fable-review"],
+                    "metadata": metadata,
+                }
+            )
+            return FakeCompleted(0, json.dumps({"id": record_id}))
         if command[:2] == ["bd", "update"]:
             return FakeCompleted(0)
         if command[:3] == ["python3", "scripts/fable_review_gate.py", "--root"]:
-            return FakeCompleted(1, json.dumps({"covered": [MODULE], "missing": [], "problems": []}))
+            # Exercise the real coverage check against whatever metadata
+            # write_review_record actually produced, rather than a
+            # hardcoded report -- this is what ties the verifier's
+            # evidence_verified/release_eligible attestation to whether
+            # the refinery gate ultimately allows or refuses.
+            report = fable_review_gate.check_coverage(
+                module_path.parent.parent, created_records, {MODULE: CONTRACT}
+            )
+            return FakeCompleted(1, json.dumps(report))
         raise AssertionError(f"unexpected command: {command}")
 
-    return fake_run
+    return fake_run, created_records
 
 
 def test_allow_path_full_governed_review(tmp_path, monkeypatch, capsys):
     module_path = make_workspace(tmp_path)
-    monkeypatch.setattr(
-        refinery_gate.subprocess, "run", _fake_run_full_review(module_path, "pass")
-    )
+    fake_run, created_records = _fake_run_full_review(module_path, "pass")
+    monkeypatch.setattr(refinery_gate.subprocess, "run", fake_run)
 
     code = refinery_gate.main(["--root", str(tmp_path), "--force"])
 
     assert code == 0
     assert "REFINERY_GATE: allow reason=ok" in capsys.readouterr().out
+    assert len(created_records) == 1
+    assert created_records[0]["metadata"]["review_permission"] == "read-only"
+    assert created_records[0]["metadata"]["review_permission_attested"] == "true"
+
+
+def test_refuse_end_to_end_when_release_not_eligible(tmp_path, monkeypatch, capsys):
+    # jobctl verify-review can report evidence_verified=true (the review job
+    # ran and its evidence checks out) while still withholding
+    # release_eligible -- that must not be treated as verifier attestation
+    # of a read-only launch envelope.
+    module_path = make_workspace(tmp_path)
+    fake_run, created_records = _fake_run_full_review(
+        module_path, "pass", release_eligible=False
+    )
+    monkeypatch.setattr(refinery_gate.subprocess, "run", fake_run)
+
+    code = refinery_gate.main(["--root", str(tmp_path), "--force"])
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "REFINERY_GATE: refuse reason=coverage-gate-failed" in out
+    assert len(created_records) == 1
+    assert "review_permission" not in created_records[0]["metadata"]
+    assert "review_permission_attested" not in created_records[0]["metadata"]
 
 
 def test_refuse_on_fix_first_verdict_appends_findings_note(tmp_path, monkeypatch, capsys):
@@ -506,7 +565,7 @@ def test_refuse_on_fix_first_verdict_appends_findings_note(tmp_path, monkeypatch
             "resolution": "Unresolved: change the artifact and run a fresh review.",
         }
     ]
-    fake_run = _fake_run_full_review(module_path, "fix-first", findings)
+    fake_run, _created_records = _fake_run_full_review(module_path, "fix-first", findings)
 
     note_calls = []
     original_fake_run = fake_run
@@ -539,7 +598,7 @@ def test_refuse_on_fix_first_verdict_surfaces_note_append_failure(tmp_path, monk
             "resolution": "Unresolved.",
         }
     ]
-    original_fake_run = _fake_run_full_review(module_path, "fix-first", findings)
+    original_fake_run, _created_records = _fake_run_full_review(module_path, "fix-first", findings)
 
     def wrapped(command, **kwargs):
         if command[:2] == ["bd", "update"]:

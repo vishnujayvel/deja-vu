@@ -372,18 +372,25 @@ def append_findings_note(
         )
 
 
-def write_review_record(root: Path, bead_id: str, review: dict[str, Any]) -> str:
+def write_review_record(
+    root: Path,
+    bead_id: str,
+    review: dict[str, Any],
+    *,
+    evidence_verified: bool,
+    release_eligible: bool,
+) -> str:
     """Promote one verified pass review into a closed bd Bead the local
     coverage diagnostic (scripts/fable_review_gate.py) can see.
 
-    review_permission and review_permission_attested come from the
-    verify-review evidence itself (review["permission"] /
-    review["permission_attested"]) rather than being asserted here -- this
-    function only runs after jobctl verify-review has reported
-    evidence_verified=true, but the permission envelope it verified is
-    whatever the delegate job actually ran under, not an assumption made by
-    this script. If verify-review does not expose those fields, they are
-    omitted rather than asserted.
+    review_permission and review_permission_attested are derived from the
+    pinned external verifier's own attestation -- jobctl verify-review's
+    top-level evidence_verified and release_eligible fields -- and are set
+    (to "read-only" / "true") only when both are True; the verify-review
+    response never carries a nested review["permission"] field, so those
+    top-level booleans are the only verifier evidence available. Any other
+    outcome omits both fields rather than asserting them, which leaves the
+    record uncovered under scripts/fable_review_gate.py's coverage check.
     """
     metadata = {
         "review_schema": review["schema_version"],
@@ -401,10 +408,9 @@ def write_review_record(root: Path, bead_id: str, review: dict[str, Any]) -> str
         "review_round": str(review["round"]),
         "review_findings_unresolved": str(len(review.get("findings") or [])),
     }
-    if "permission" in review:
-        metadata["review_permission"] = review["permission"]
-    if "permission_attested" in review:
-        metadata["review_permission_attested"] = str(review["permission_attested"]).lower()
+    if evidence_verified and release_eligible:
+        metadata["review_permission"] = "read-only"
+        metadata["review_permission_attested"] = "true"
     completed = subprocess.run(
         [
             "bd",
@@ -614,7 +620,13 @@ def main(argv: list[str] | None = None) -> int:
                 )
 
             try:
-                write_review_record(root, bead_id, review)
+                write_review_record(
+                    root,
+                    bead_id,
+                    review,
+                    evidence_verified=bool(verification.get("evidence_verified")),
+                    release_eligible=bool(verification.get("release_eligible")),
+                )
             except RuntimeError as error:
                 return finish("refuse", f"review-record-write-failed:{module}:{error}")
 
