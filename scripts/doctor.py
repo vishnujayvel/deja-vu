@@ -15,7 +15,7 @@ Read-only: never installs anything, never prints secret values
 (presence/absence only).
 """
 
-import importlib.util
+import ast
 import json
 import os
 import shutil
@@ -97,28 +97,45 @@ def check_python():
         record("FAIL", "python3", f"{v.major}.{v.minor} found; 3.9+ required")
 
 
+def _top_level_assigned_names(tree):
+    """Names bound by top-level `NAME = ...` or `NAME: T = ...` statements."""
+    names = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
 def check_refinery_gate(root=ROOT):
-    """Required: scripts/refinery_gate.py must exist, import cleanly (no side
-    effects), declare POLECAT_POOL and POLECAT_IDENTITIES, and be listed in
-    contracts/module-contracts.json. This is the refinery's pre-merge gate --
-    if it's broken or unregistered, merges to p1-night proceed unreviewed.
+    """Required: scripts/refinery_gate.py must exist, parse as valid Python
+    (no import, no side effects), declare POLECAT_POOL and
+    POLECAT_IDENTITIES, and be listed in contracts/module-contracts.json.
+    This is the refinery's pre-merge gate -- if it's broken or unregistered,
+    merges to p1-night proceed unreviewed.
+
+    Static-only: this is a read-only diagnostic, so it must never import or
+    exec the gate script (that would run its top-level code -- writing
+    __pycache__ and any other side effects -- as a byproduct of `doctor.py`).
     """
     gate_path = os.path.join(root, "scripts", "refinery_gate.py")
     if not os.path.isfile(gate_path):
         record("FAIL", "refinery-gate", "missing scripts/refinery_gate.py")
         return
 
-    spec = importlib.util.spec_from_file_location("_doctor_refinery_gate_check", gate_path)
-    module = importlib.util.module_from_spec(spec)
     try:
-        spec.loader.exec_module(module)
+        with open(gate_path, "r", encoding="utf-8") as f:
+            source = f.read()
+        tree = ast.parse(source, filename=gate_path)
     except Exception as e:
-        record("FAIL", "refinery-gate", f"does not import cleanly: {e}")
+        record("FAIL", "refinery-gate", f"does not parse as valid Python: {e}")
         return
 
-    missing_attrs = [
-        name for name in ("POLECAT_POOL", "POLECAT_IDENTITIES") if not hasattr(module, name)
-    ]
+    declared = _top_level_assigned_names(tree)
+    missing_attrs = [name for name in ("POLECAT_POOL", "POLECAT_IDENTITIES") if name not in declared]
     if missing_attrs:
         record("FAIL", "refinery-gate", f"missing required attribute(s): {', '.join(missing_attrs)}")
         return
@@ -146,7 +163,7 @@ def check_refinery_gate(root=ROOT):
     record(
         "PASS",
         "refinery-gate",
-        "present, imports cleanly, declares polecat pool, contract entry present",
+        "present, parses cleanly, declares polecat pool, contract entry present",
     )
 
 
