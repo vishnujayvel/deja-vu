@@ -1,6 +1,8 @@
 import argparse
 import datetime
+import io
 import json
+import sys
 
 import pytest
 
@@ -314,3 +316,18 @@ def test_main_invalid_utf8_input_reports_error_instead_of_raising(tmp_path, caps
     assert out["profiles"] == []
     assert any("cannot read --input" in e for e in out["errors"])
     assert not any(str(bad_path) in e for e in out["errors"])
+
+
+def test_main_invalid_utf8_stdin_reports_error_instead_of_raising(monkeypatch, capsys):
+    # Default --input mode ("-") reads sys.stdin.read() directly; a strict
+    # decoder on invalid UTF-8 must not escape as an uncaught
+    # UnicodeDecodeError, mirroring the --input file guard above.
+    bad_stdin = io.TextIOWrapper(io.BytesIO(b"\xff\xfe\x00invalid"), encoding="utf-8", errors="strict")
+    monkeypatch.setattr(sys, "stdin", bad_stdin)
+
+    rc = provenance.main(["--now", "2026-01-01T00:00:00Z"])
+
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["profiles"] == []
+    assert any("cannot read stdin" in e for e in out["errors"])

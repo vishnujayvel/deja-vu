@@ -224,7 +224,15 @@ def build_arg_parser():
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
     if args.input == "-":
-        raw = sys.stdin.read()
+        try:
+            raw = sys.stdin.read()
+        except OSError as e:
+            reason = e.strerror or e.__class__.__name__
+            print(json.dumps({"profiles": [], "errors": [f"provenance: rejected -- cannot read stdin: {reason}"]}, indent=2))
+            return 1
+        except UnicodeDecodeError as e:
+            print(json.dumps({"profiles": [], "errors": [f"provenance: rejected -- cannot read stdin: invalid UTF-8 ({e.reason})"]}, indent=2))
+            return 1
     else:
         try:
             with open(args.input, "r", encoding="utf-8") as f:

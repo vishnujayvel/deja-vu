@@ -1,7 +1,7 @@
 # Stage 3 — Sweep
 
 Lanes, each answering a question no other lane can (the exact per-tier lane set is versioned in
-`policy/tier-matrix.json`). Run them **blind to each other**: a
+`$SKILL_DIR/policy/tier-matrix.json`). Run them **blind to each other**: a
 lane that knows what another lane already found starts confirming instead of searching. Brief
 each lane subagent with only the Stage 2 output (vocabularies + exclusion criteria) — never with
 another lane's candidates. Dedup and ranking happen once, after the barrier, in the main thread.

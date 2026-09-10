@@ -37,9 +37,10 @@ Full rationale and the failure mode each stage prevents: `$SKILL_DIR/docs/design
 
 ## Resolving this skill's own files
 
-Scripts and references below are bundled *with the skill*, not with whatever project you're
-working in — every `scripts/` and `references/` path below is relative to this skill's own
-directory, call it `$SKILL_DIR`, never the current working directory.
+Scripts, references, and the bundled `policy/` and `schemas/` artifacts are bundled *with the
+skill*, not with whatever project you're working in — every `scripts/`, `references/`,
+`policy/`, and `schemas/` path below is relative to this skill's own directory, call it
+`$SKILL_DIR`, never the current working directory.
 
 Set `$SKILL_DIR` from the absolute path your host actually loaded this `SKILL.md` from (its
 parent directory) — that is correct regardless of install mechanism (plugin cache, direct skill
@@ -133,7 +134,7 @@ repository, a bounded writable area, and no outbound network beyond package-regi
 the install needs. A scratch directory, tempfile, or changed `$HOME` is not isolation and does
 not satisfy this. If no enforceable sandbox is available, do not execute the candidate — read
 its source statically instead and record `hands_on_probe` as unsupported (Full tier then stops
-on `required_human_decision` per `policy/tier-matrix.json`, not a false pass). Discard the
+on `required_human_decision` per `$SKILL_DIR/policy/tier-matrix.json`, not a false pass). Discard the
 sandbox/scratch area when the probe ends.
 
 ## The six verdicts

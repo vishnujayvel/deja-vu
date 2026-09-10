@@ -38,7 +38,7 @@ provenance lane + 1 probe-stage lane), and each tier runs a bounded, explicit su
 | `standards_bodies` (concept) | discovery | 3 | `web_search` | — | `unsupported`; available at every tier via `concept_optional_lanes` |
 | `framework_docs` (concept) | discovery | 3 | `web_fetch` | `general_web` | `unsupported`; available at every tier via `concept_optional_lanes` |
 | `academic_survey` (concept) | discovery | 3 | `web_search` | — | `unsupported`; available at every tier via `concept_optional_lanes` |
-| `provenance` | shortlist_enrichment | 6 (Judge) | `provenance_lookup` | — | `degraded` only — no-throw by design, never `unsupported`/`failed`; **required at Full** |
+| `provenance` | shortlist_enrichment | 6 (Judge) | `provenance_lookup` | — | `degraded` on partial capability loss — no-throw by design, never `unsupported`/`failed`; a maintainer left with no accepted profile is missing required evidence, not a lane-status value, and triggers `required_human_decision`; **required at Full** |
 | `hands_on_probe` | probe | 5 | `sandbox_exec` | `architecture_qa` (weaker) | `unsupported`; Full tier must stop on `required_human_decision` |
 
 Concept-hunt lanes (`standards_bodies`, `framework_docs`, `academic_survey`) are available at
@@ -51,8 +51,13 @@ expected, not a failed sweep.
 The `provenance` lane runs at Stage 6 (Judge), not Stage 3 (Sweep): it evaluates the
 maintainers of already-shortlisted candidates rather than discovering candidates itself. It is
 required at Full tier for every shortlisted maintainer (see Evidence obligations below), and
-`scripts/provenance.py` is written to never hard-fail — a missing or unreachable profile
-degrades to an `unknown-experimental` signal instead of failing the lane.
+`scripts/provenance.py` is written to never hard-fail — a rejected owner entry (missing or
+malformed maintainer data) is dropped from its output and reported in `errors[]`, never
+fabricated into an `unknown-experimental` signal. `unknown-experimental` is only assigned to a
+genuinely accepted profile whose real activity is weak. Lane status stays `degraded` for a
+capability outage that still returns partial coverage; a shortlisted maintainer left with no
+accepted profile at all is missing required Full-tier evidence, and that gap — not the lane
+status — is what triggers `stopping_rules.required_human_decision` for that candidate.
 
 ## Tiers
 

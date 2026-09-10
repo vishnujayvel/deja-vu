@@ -35,7 +35,7 @@ top 1–2 shortlisted candidates — never the whole list, this stage doesn't sc
 
 Cloning is fine — a `git clone` writes files, it doesn't execute the candidate. Installing,
 building, and running it does: `npm ci`, `pip install -e .`, `cargo build`, a smoke test, all
-execute code the candidate controls. `sandbox_exec` (`policy/tier-matrix.json`) gates that step,
+execute code the candidate controls. `sandbox_exec` (`$SKILL_DIR/policy/tier-matrix.json`) gates that step,
 not the clone.
 
 Before running any install/build/test command, confirm a real, *enforceable* disposable
@@ -64,7 +64,7 @@ source statically instead (safe with ordinary trusted read tools; it never execu
 code) and stop there. Record `hands_on_probe` as `unsupported` and the evidence you do have as
 weaker/source-only. At Full tier this is not a silent pass: `sandbox_exec` unsupported means the
 hunt cannot reach a verified-fit stopping rule and must stop on `required_human_decision`
-(`policy/tier-matrix.json`), not report success on source-reading alone.
+(`$SKILL_DIR/policy/tier-matrix.json`), not report success on source-reading alone.
 
 When a sandbox *is* available, still read the source of the load-bearing part — the module that
 would actually be on your call path, not the whole tree — after the sandboxed run. Ask,

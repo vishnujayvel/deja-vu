@@ -170,7 +170,7 @@
       "on_unavailable": {
         "fallback": null,
         "lane_status": "degraded",
-        "note": "Required at Full tier only, for every shortlisted maintainer (tiers.full.evidence_obligations). scripts/provenance.py is no-throw by design: a fetch failure or missing profile never hard-fails the lane, it degrades that maintainer's signal to `unknown-experimental` instead. Lane status is therefore always `degraded` under partial or total capability loss, never `unsupported` or `failed`, so this required lane never triggers `stopping_rules.required_human_decision` on its own."
+        "note": "Required at Full tier only, for every shortlisted maintainer (tiers.full.evidence_obligations). scripts/provenance.py is no-throw by design: it never raises or crashes on missing/malformed maintainer data, but it also never fabricates a signal for it -- a rejected owner entry (missing/malformed fields, unreadable --input, invalid JSON) is excluded from `profiles` and reported in `errors[]`, it is never assigned an `unknown-experimental` signal. `unknown-experimental` is only the signal for a genuinely accepted profile whose real activity falls below the established-practitioner/active-builder thresholds. Lane status stays `degraded` for a capability outage that still returns partial coverage, consistent with the degraded/unsupported distinction used by the other lanes in this policy. A shortlisted maintainer with no accepted profile at all is missing required Full-tier evidence, not a degraded-but-present signal -- that gap triggers `stopping_rules.required_human_decision` for that candidate, the same as any other unmet Full-tier evidence obligation."
       }
     },
     "hands_on_probe": {
