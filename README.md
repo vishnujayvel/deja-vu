@@ -1,5 +1,7 @@
 # deja-vu
 
+![Build, buy, or borrow: a terracotta bridge under construction, a golden prefabricated span, and a shared stone arch.](docs/assets/build-buy-borrow.png)
+
 > The skill that gives your agent the feeling it has seen this problem before.
 
 A skill for Claude Code and Codex that runs a structured prior-art hunt **before** anything
