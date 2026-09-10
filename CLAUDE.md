@@ -1,70 +1,64 @@
 # Project Instructions for AI Agents
 
-This file provides instructions and context for AI coding agents working on this project.
+Guidance for Claude Code (and other AI coding agents) contributing to deja-vu — a Claude Agent
+Skill that runs a structured prior-art hunt before custom code gets built. This mirrors
+`AGENTS.md`; keep the two in sync.
 
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
-## Beads Issue Tracker
+## Project layout
 
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+- `SKILL.md` — the skill itself; Claude Code's frontmatter-triggered entry point. This is the
+  shipped behavior users depend on — changes to it should go through normal review.
+- `docs/design.md` — full design rationale, one section per stage, citations.
+- `docs/adr/` — architecture decision records, including deja-vu's own prior-art hunts (see
+  ADR-1 for the CI link-checker choice).
+- `references/` — one reference doc per stage (framing, judge, lanes, learn, re-problem, record,
+  snowball-probe) — the detail `SKILL.md` points to rather than inlines.
+- `scripts/` — stdlib-only Python: `sweep.py` (multi-lane candidate search), `provenance.py`
+  (maintainer signal), `doctor.py` (setup check), plus `sanitize_check.sh` (public-repo hygiene
+  gate).
+- `tests/` — pytest suite; HTTP calls are mocked via recorded fixtures in `tests/fixtures/`.
+- `evals/` — offline schema-validated trigger/verdict fixtures plus an experimental `--live`
+  mode.
+- `.github/workflows/ci.yml` — what actually runs on every push/PR (see Checks below).
 
-### Quick Reference
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
-```
-
-### Rules
-
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
-
-**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
-
-## Session Completion
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-<!-- END BEADS INTEGRATION -->
-
-
-## Build & Test
-
-_Add your build and test commands here_
+## Setup
 
 ```bash
-# Example:
-# npm install
-# npm test
+python3 -m venv .venv && source .venv/bin/activate
+python3 -m pip install --upgrade pip pytest jsonschema
+python3 scripts/doctor.py   # reports optional dependencies: gh CLI, octocode MCP, etc.
 ```
 
-## Architecture Overview
+The scripts themselves are stdlib-only Python 3 with network access; `jsonschema` is only a
+test dependency, needed by `tests/test_decision_packet_schema.py`.
 
-_Add a brief overview of your project architecture_
+## Checks
 
-## Conventions & Patterns
+Run these before opening a PR — they're exactly CI's steps:
 
-_Add your project-specific conventions here_
+```bash
+python3 -m pytest tests/ -q
+python3 evals/run_evals.py --offline
+bash scripts/sanitize_check.sh
+```
+
+CI additionally runs a link check ([lychee](https://github.com/lycheeverse/lychee)) over every
+Markdown file — see `docs/adr/0001-link-checking-depend-lychee.md` for why.
+
+## Conventions
+
+- `scripts/sweep.py` is stdlib-only and no-throw by design: failures land in its `errors[]`
+  output field instead of raising, so a partial/degraded sweep still returns useful data.
+- Significant dependency, adoption, or reimplementation decisions in this repo are recorded as
+  ADRs under `docs/adr/` — check there for precedent before reinventing something new.
+- `scripts/sanitize_check.sh` fails the build on machine-specific `/Users/<name>/` paths or
+  email addresses in tracked files — use `$HOME` or repo-relative paths in docs and scripts.
+- Keep `SKILL.md`, `references/*.md`, and `scripts/sweep.py`'s lane list in sync —
+  `evals/run_evals.py --offline` checks this and fails naming the drifted token.
+
+## Contributing
+
+Open a PR against `main`. Small, focused changes are easier to review — if you're touching
+`SKILL.md` or the loop's stage behavior, explain the reasoning with the same receipts-first
+discipline the skill itself asks for: what you compared, and why the change wins. No specific
+issue tracker or workflow tool is required to contribute here.

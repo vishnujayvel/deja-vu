@@ -1,0 +1,12 @@
+{
+  "name": "deja-vu",
+  "version": "0.1.1",
+  "description": "Structured prior-art hunt that runs before anything custom gets built.",
+  "author": {
+    "name": "Vishnu Jayavel"
+  },
+  "homepage": "https://github.com/vishnujayvel/deja-vu",
+  "repository": "https://github.com/vishnujayvel/deja-vu",
+  "license": "MIT",
+  "keywords": ["prior-art", "research", "dependency-review", "build-vs-buy"]
+}
