@@ -39,6 +39,10 @@ REQUIRED_SKILL_FILES = [
     "scripts/sweep.py",
     "scripts/provenance.py",
     "docs/design.md",
+    "docs/tier-matrix.md",
+    "policy/tier-matrix.json",
+    "schemas/decision-packet.schema.json",
+    "docs/adr/0011-decision-taxonomy-compositional-packet.md",
 ]
 
 results = []  # (level, name, detail)
@@ -156,8 +160,9 @@ def check_octocode():
     record(
         "WARN",
         "octocode-mcp",
-        "not registered -- optional; install: claude mcp add-json -s user octocode "
-        "'{\"command\":\"npx\",\"type\":\"stdio\",\"args\":[\"-y\",\"@octocodeai/mcp@latest\"]}'",
+        "not registered -- optional; install: npm install --global @octocodeai/mcp@18.0.1, then "
+        "claude mcp add-json -s user octocode "
+        "'{\"command\":\"octocode-mcp\",\"type\":\"stdio\",\"args\":[]}'",
     )
 
 

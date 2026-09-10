@@ -14,7 +14,9 @@ empirically: a skills/deja-vu/SKILL.md symlink back to the repo root became an
 empty directory in the installed cache), so this script copies rather than links.
 Never hand-edit anything under codex-plugin/skills/deja-vu/ — re-run this script
 instead whenever SKILL.md, scripts/{doctor,sweep,provenance}.py, references/*.md,
-or docs/design.md change.
+docs/design.md, docs/tier-matrix.md, policy/tier-matrix.json,
+schemas/decision-packet.schema.json, or docs/adr/0011-decision-taxonomy-compositional-packet.md
+change.
 
 This copies exactly the files SKILL.md's own loop instructions reference
 (verified via grep against SKILL.md + references/*.md) — not the whole repo —
@@ -51,6 +53,14 @@ def desired_files() -> dict[str, Path]:
     for path in sorted((REPO_ROOT / "references").glob("*.md")):
         files[f"references/{path.name}"] = path
     files["docs/design.md"] = REPO_ROOT / "docs" / "design.md"
+    files["docs/tier-matrix.md"] = REPO_ROOT / "docs" / "tier-matrix.md"
+    files["policy/tier-matrix.json"] = REPO_ROOT / "policy" / "tier-matrix.json"
+    files["schemas/decision-packet.schema.json"] = (
+        REPO_ROOT / "schemas" / "decision-packet.schema.json"
+    )
+    files["docs/adr/0011-decision-taxonomy-compositional-packet.md"] = (
+        REPO_ROOT / "docs" / "adr" / "0011-decision-taxonomy-compositional-packet.md"
+    )
     return files
 
 

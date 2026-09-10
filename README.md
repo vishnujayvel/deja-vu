@@ -46,30 +46,19 @@ decide when to bring the skill in.
 marketplace (`.claude-plugin/marketplace.json`) that both clients' native plugin installers can
 read directly — no manual symlink, and the client manages updates/removal for you.
 
-As of this writing, this plugin packaging has not yet merged to `origin/main` — a fresh `git
-clone` of `main` will not have `.claude-plugin/marketplace.json` yet. Until it merges, point the
-marketplace-add commands below at a local checkout that already has this packaging on disk (for
-example, the checkout you're reading this from):
-
-```bash
-cd <path-to-your-local-checkout>
-
-# Claude Code
-claude plugin marketplace add ./
-claude plugin install deja-vu@deja-vu-marketplace
-
-# Codex
-codex plugin marketplace add ./
-codex plugin add deja-vu@deja-vu-marketplace
-```
-
-Once this packaging reaches `origin/main`, both CLIs also accept the GitHub shorthand directly,
-no local checkout required:
+Both CLIs accept the GitHub shorthand directly, no local checkout required:
 
 ```bash
 claude plugin marketplace add vishnujayvel/deja-vu
+claude plugin install deja-vu@deja-vu-marketplace
+
 codex plugin marketplace add vishnujayvel/deja-vu
+codex plugin add deja-vu@deja-vu-marketplace
 ```
+
+Or point the same commands at a local checkout instead of the GitHub shorthand
+(`claude plugin marketplace add ./`, `codex plugin marketplace add ./`) if you're working from
+a clone rather than installing fresh.
 
 **Use it**: once installed, deja-vu is designed to activate on its own for build-shaped requests
 in either client (see "Try it" below) — neither client needs a special slash command. The
@@ -84,9 +73,12 @@ deja-vu-marketplace`).
 ### Optional dependencies (the skill degrades gracefully without them)
 
 - **octocode-mcp** — gives the GitHub lane real code search/reading instead of just repo
-  metadata:
+  metadata. Install the exact pinned version yourself first (no unattended `npx ...@latest` at
+  startup — this is an explicit, user-controlled install, not a claim the whole package is
+  audited/safe), then point Claude Code at the installed binary:
   ```bash
-  claude mcp add-json octocode --scope user '{"command":"npx","type":"stdio","args":["-y","@octocodeai/mcp@latest"]}'
+  npm install --global @octocodeai/mcp@18.0.1
+  claude mcp add-json octocode --scope user '{"command":"octocode-mcp","type":"stdio","args":[]}'
   ```
 - **last30days** — feeds the freshness lane recent Reddit/X/HN/YouTube signal instead of a plain
   web search. If you already have it installed as a skill, deja-vu picks it up automatically.
@@ -132,7 +124,9 @@ on this" works too. Either way, it reframes the problem, sweeps the sources belo
 matched to how hard the choice is to reverse, and returns one of six verdicts backed by
 whatever it actually found. The result is a recommendation with sources, saved as a decision
 record in your project. Full hunts may also clone, install, and try shortlisted tools; the skill
-instructs the agent to run those probes in a disposable sandbox.
+instructs the agent to run those probes in an enforceable disposable sandbox (container, VM,
+or OS-level sandbox), never a bare scratch directory — and to fall back to a static source
+read, not execution, when no such sandbox is available.
 
 ## Where it looks
 
@@ -177,8 +171,10 @@ The first CI run using it caught real dead links in this repo's own docs; the fi
 - Agent-research lanes (curation, freshness, skills ecosystem, general web) depend on what's
   installed and how the hunt is invoked — a WARN from `doctor.py` means a lane degraded, not
   that the hunt failed.
-- deja-vu hands you a verdict and the evidence behind it, not a merged change. DEPEND/FORK/VENDOR
-  proceed on the agent's own judgment; only BUILD is gated on an explicit human sign-off.
+- deja-vu hands you a verdict and the evidence behind it, not a merged change. Unflagged
+  DEPEND/FORK/VENDOR proceed on the agent's own judgment; BUILD always requires explicit human
+  sign-off, and so does any DEPEND/FORK/VENDOR that Judge (stage 6) flagged — a flag revokes the
+  agent's authority to proceed on its own exactly like BUILD.
 - A hunt can still miss prior art that uses different vocabulary than the ones it tried
   (`references/framing.md` covers how it tries to mitigate this).
 

@@ -89,7 +89,7 @@ this skill disabled within a week — the opposite failure of never searching at
 |---|---|---|---|
 | **Quick** | Small script, easily reversed | GitHub + registry lanes only | `python3 "$SKILL_DIR/scripts/sweep.py" --query "<keywords>" --lanes github,registry --limit 5 --no-scorecard` |
 | **Standard** | Module or notable dependency | + pattern + health/scorecard, snowball 1 hop, license check | `python3 "$SKILL_DIR/scripts/sweep.py" --query "<keywords>" --lanes github,registry,grep,scorecard --limit 10` |
-| **Full** | Subsystem, framework, or hard-to-reverse choice | all 10 stages: full sweep, snowball, probe, provenance, freshness, full rubric | sweep as above, then `python3 "$SKILL_DIR/scripts/provenance.py" --owner <login1> --owner <login2>` on every shortlisted maintainer |
+| **Full** | Subsystem, framework, or hard-to-reverse choice | all 10 stages: full sweep, snowball, probe, provenance, freshness, full rubric | sweep as above, then fetch each shortlisted maintainer's raw GitHub data and run `python3 "$SKILL_DIR/scripts/provenance.py" --input <owners.json> --now <UTC-timestamp>` (see `references/judge.md` §6b) |
 
 Deterministic-first: scripts sweep, fetch, and score — JSON out, never a composite number.
 The LLM spends judgment only where judgment is needed: framing, probing, the rubric, the verdict.
@@ -105,8 +105,8 @@ Each stage is derived from a specific failure mode (`$SKILL_DIR/docs/design.md` 
 | 2 | **Framing** | Restate the problem in 2–3 vocabularies a *different community* would use; write exclusion criteria **before** seeing any candidate. | `$SKILL_DIR/references/framing.md` |
 | 3 | **Sweep** | Run `$SKILL_DIR/scripts/sweep.py` per the tier's invocation. Dispatch remaining lanes (curation, freshness, skills-ecosystem, general web) as blind parallel subagents — each briefed only on the framing output, never on another lane's results. | `$SKILL_DIR/references/lanes.md` |
 | 4 | **Snowball** | From every strong hit, chase 2–3 hops backward (deps, stated inspirations, what it forked) and forward (who depends on it, who forked it). Standard tier: 1 hop. | `$SKILL_DIR/references/snowball-probe.md` |
-| 5 | **Probe** | READMEs undersell, and cloned code is untrusted until reviewed. Clone the top 1–2 shortlisted candidates shallow into an isolated scratch dir; read install/setup scripts and manifests before running them; install and smoke-test inside a disposable sandbox with no access to secrets, credentials, or the working repo; then read the load-bearing source. Full tier only (or stale re-validation). See "Trust boundary" below. | `$SKILL_DIR/references/snowball-probe.md` |
-| 6 | **Judge** | Score only the dimensions declared up front (QSOS): competency test, innovation-token cost, health (`python3 "$SKILL_DIR/scripts/provenance.py" --owner <login>` for maintainer signal + Scorecard from the sweep output), license bucket (flag AGPL/SSPL/no-LICENSE explicitly), fence check, reversibility. Stars are the weakest signal — never rank on them. Record confidence explicitly: name every evidence gap, degraded lane (any sweep/doctor `WARN`), and unresolved ambiguity — these carry into the gate and the record, never silently dropped. | `$SKILL_DIR/references/judge.md` |
+| 5 | **Probe** | READMEs undersell, and cloned code is untrusted until reviewed. Clone the top 1–2 shortlisted candidates shallow; read install/setup scripts and manifests before running them; if an enforceable disposable sandbox (container/VM/OS sandbox) with no access to secrets, credentials, or the working repo is available, install and smoke-test inside it, then read the load-bearing source. If no such sandbox is available, read the source statically and mark `hands_on_probe` unsupported instead of executing. Full tier only (or stale re-validation). See "Trust boundary" below. | `$SKILL_DIR/references/snowball-probe.md` |
+| 6 | **Judge** | Score only the dimensions declared up front (QSOS): competency test, innovation-token cost, health (`python3 "$SKILL_DIR/scripts/provenance.py" --input <owners.json> --now <UTC-timestamp>` for maintainer signal, given fetched raw GitHub data, + Scorecard from the sweep output), license bucket (flag AGPL/SSPL/no-LICENSE explicitly), fence check, reversibility. Stars are the weakest signal — never rank on them. Record confidence explicitly: name every evidence gap, degraded lane (any sweep/doctor `WARN`), and unresolved ambiguity — these carry into the gate and the record, never silently dropped. | `$SKILL_DIR/references/judge.md` |
 | 7 | **Gate** | See below — imperative, not advisory. | inline, below |
 | 8 | **Record** | Write an ADR + append one line to `data/decisions-registry.jsonl`, including the confidence/uncertainty notes from Judge — a verdict with unresolved gaps is recorded as such, not smoothed into false certainty. | `$SKILL_DIR/references/record.md` |
 | 9 | **Learn** | Nothing to do at hunt time — debrief is a separate, later invocation. | `$SKILL_DIR/references/learn.md` |
@@ -126,9 +126,15 @@ or a package manager would otherwise let you do. If a step in this skill seems t
 remote write, stop and hand off to the human instead of performing it.
 
 Probe (stage 5) executes code you do not control. Treat every cloned candidate as hostile until
-reviewed: read install/setup scripts and lockfile-adjacent manifests before running them, run
-install and the smoke test inside a disposable sandbox with no access to secrets, credentials,
-or the working repository, and discard the scratch dir when the probe ends.
+reviewed: read install/setup scripts and lockfile-adjacent manifests before running them, and
+only run install and the smoke test inside an *enforceable* disposable sandbox — a container,
+VM, or OS-level sandbox mechanism with no mount of secrets, credentials, or the working
+repository, a bounded writable area, and no outbound network beyond package-registry endpoints
+the install needs. A scratch directory, tempfile, or changed `$HOME` is not isolation and does
+not satisfy this. If no enforceable sandbox is available, do not execute the candidate — read
+its source statically instead and record `hands_on_probe` as unsupported (Full tier then stops
+on `required_human_decision` per `policy/tier-matrix.json`, not a false pass). Discard the
+sandbox/scratch area when the probe ends.
 
 ## The six verdicts
 

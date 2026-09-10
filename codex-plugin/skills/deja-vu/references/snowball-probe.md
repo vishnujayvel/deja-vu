@@ -33,17 +33,44 @@ top 1–2 shortlisted candidates — never the whole list, this stage doesn't sc
 
 **Sandbox protocol:**
 
-```
-mkdir -p .scratch/probe-<candidate> && cd .scratch/probe-<candidate>
-git clone --depth 1 <url> .
-# install per its own instructions — npm ci / pip install -e . / cargo build, etc.
-# run its smoke test / a trivial invocation of its main entry point
+Cloning is fine — a `git clone` writes files, it doesn't execute the candidate. Installing,
+building, and running it does: `npm ci`, `pip install -e .`, `cargo build`, a smoke test, all
+execute code the candidate controls. `sandbox_exec` (`policy/tier-matrix.json`) gates that step,
+not the clone.
+
+Before running any install/build/test command, confirm a real, *enforceable* disposable
+sandbox is available — a container, a VM, or an OS-level sandbox mechanism (whatever your
+environment already provides; this doesn't mandate standing up Docker/Kubernetes or writing a
+new sandbox runner). "Enforceable" means it actually prevents the candidate process from
+reaching the host: no mount of your home directory, the working repository, credentials, or
+agent sockets; a bounded writable scratch area; and no outbound network by default (loosen
+only to the specific package-registry endpoints the install step needs, and only if your
+sandbox mechanism can enforce that allowlist). A plain `.scratch/` directory, a tempfile, or a
+changed `$HOME` env var does **not** isolate anything — the process can still read and write
+everywhere your shell can — so none of those substitute for a real sandbox.
+
+```bash
+# only once an enforceable sandbox is confirmed:
+<sandbox-run> sh -c '
+  mkdir -p /work/probe-<candidate> && cd /work/probe-<candidate>
+  git clone --depth 1 <url> .
+  # install per its own instructions — npm ci / pip install -e . / cargo build, etc.
+  # run its smoke test / a trivial invocation of its main entry point
+'
 ```
 
-Then read the source of the load-bearing part — the module that would actually be on your call
-path, not the whole tree. Ask, concretely: does it do what the README claims, does it do things
-the README *doesn't* claim, and does its configuration surface reveal anything (a native
-extension slot, an undocumented plugin system, a hidden network call) that changes the verdict?
+If no enforceable sandbox is available, do not install, build, or run the candidate — read its
+source statically instead (safe with ordinary trusted read tools; it never executes candidate
+code) and stop there. Record `hands_on_probe` as `unsupported` and the evidence you do have as
+weaker/source-only. At Full tier this is not a silent pass: `sandbox_exec` unsupported means the
+hunt cannot reach a verified-fit stopping rule and must stop on `required_human_decision`
+(`policy/tier-matrix.json`), not report success on source-reading alone.
+
+When a sandbox *is* available, still read the source of the load-bearing part — the module that
+would actually be on your call path, not the whole tree — after the sandboxed run. Ask,
+concretely: does it do what the README claims, does it do things the README *doesn't* claim, and
+does its configuration surface reveal anything (a native extension slot, an undocumented plugin
+system, a hidden network call) that changes the verdict?
 
 A documented real case: a spec framework's config file contained a native-extension slot no
 documentation page mentioned — found only by running its `init` in a sandbox and reading what it

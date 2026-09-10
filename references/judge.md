@@ -53,10 +53,18 @@ candidates that are otherwise equal on every declared dimension, never a judge o
 
 ## Stage 6b — Provenance
 
-Who is behind the code, independent of what the code does.
+Who is behind the code, independent of what the code does. `scripts/provenance.py` is a pure
+normalizer — it fetches nothing itself. Fetch each shortlisted maintainer's raw GitHub user
+(and optionally repos) data yourself (e.g. `gh api users/<login>`), assemble it into an
+`owners.json` input, and pass that plus an explicit reference timestamp:
 
+```json
+{"owners": [{"login": "<github-login>", "user": {...raw gh api users/<login> output...},
+  "repos": [...raw gh api users/<login>/repos output, or null...]}]}
 ```
-python3 scripts/provenance.py --owner <github-login> [--owner <login2> ...]
+
+```bash
+python3 scripts/provenance.py --input owners.json --now 2026-01-01T00:00:00Z
 ```
 
 stdout:
@@ -64,7 +72,7 @@ stdout:
 ```json
 {"profiles": [{"login": "...", "name": null, "company": null, "created_at": "...",
   "followers": 0, "public_repos": 0, "account_age_years": 0.0, "other_notable": [],
-  "signal": "established-practitioner|active-builder|unknown-experimental"}]}
+  "signal": "established-practitioner|active-builder|unknown-experimental"}], "errors": []}
 ```
 
 Run it against every shortlisted maintainer's login, then supplement with a plain web search for
@@ -84,7 +92,7 @@ correlation is guaranteed, so don't assume it.
 | Provenance signal | + Probe says the design is sound | Route |
 |---|---|---|
 | established-practitioner / active-builder, licensed, maintained | → | **DEPEND** or **FORK**: run their code |
-| unknown-experimental, unlicensed, or abandoned | → | **VENDOR** the idea by reimplementing it yourself — borrow the design, not the artifact |
+| unknown-experimental, unlicensed, or abandoned | → | **BUILD** as a clean-room reimplementation (`route: clean-room-reimplement` or `custom-build`, `authority: human-required`) — borrow the design, not the artifact |
 
 Carry both the rubric scores and the provenance signal into Stage 7 (Gate) — the gate reads the
 receipts this stage produced, it does not re-derive them.

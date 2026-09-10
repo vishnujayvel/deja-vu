@@ -22,6 +22,19 @@ def make_canonical_sources(root: Path) -> None:
     docs_dir = root / "docs"
     docs_dir.mkdir(parents=True, exist_ok=True)
     (docs_dir / "design.md").write_text("design\n")
+    (docs_dir / "tier-matrix.md").write_text("tier-matrix\n")
+
+    adr_dir = docs_dir / "adr"
+    adr_dir.mkdir(parents=True, exist_ok=True)
+    (adr_dir / "0011-decision-taxonomy-compositional-packet.md").write_text("adr-11\n")
+
+    policy_dir = root / "policy"
+    policy_dir.mkdir(parents=True, exist_ok=True)
+    (policy_dir / "tier-matrix.json").write_text("{}\n")
+
+    schemas_dir = root / "schemas"
+    schemas_dir.mkdir(parents=True, exist_ok=True)
+    (schemas_dir / "decision-packet.schema.json").write_text("{}\n")
 
 
 @pytest.fixture
@@ -41,6 +54,12 @@ def test_sync_regenerates_normally(repo):
     assert (dest / "SKILL.md").read_text() == "skill content\n"
     assert (dest / "references" / "framing.md").read_text() == "framing\n"
     assert (dest / "docs" / "design.md").read_text() == "design\n"
+    assert (dest / "docs" / "tier-matrix.md").read_text() == "tier-matrix\n"
+    assert (dest / "policy" / "tier-matrix.json").read_text() == "{}\n"
+    assert (dest / "schemas" / "decision-packet.schema.json").read_text() == "{}\n"
+    assert (
+        dest / "docs" / "adr" / "0011-decision-taxonomy-compositional-packet.md"
+    ).read_text() == "adr-11\n"
     for name in sync_codex_plugin.RUNTIME_SCRIPTS:
         assert (dest / "scripts" / name).read_text() == f"# {name}\n"
 

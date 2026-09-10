@@ -24,6 +24,10 @@ now, when nobody remembers why the losing candidates lost.
 
 ## Decision
 **Verdict:** <NOT-A-PROBLEM | DIFFERENT-PROBLEM | DEPEND | FORK | VENDOR | BUILD>
+**Confidence:** <Judge's confidence note from Stage 6, e.g. "high" or "moderate — see evidence gaps below">
+**Degraded lanes:** <comma-separated lane names that reported `degraded`/`unsupported`/`skipped`, or `none`>
+**Evidence gaps:** <what coverage is still missing and why, or `none`>
+**Unresolved ambiguity:** <any Stage 6 disagreement or open question the verdict doesn't resolve, or `none`>
 <one paragraph: what was adopted/built and why, referencing the fence check and
 reversibility answer from Stage 6>
 
@@ -39,13 +43,29 @@ skill doesn't mandate a location, only that one exists per decision.
 
 An append-only JSONL file, `data/decisions-registry.jsonl` (gitignored — it accumulates
 project-specific, sometimes sensitive, history and should not ship in a public repo template).
-One line per hunt:
+
+Before the first create-or-append in a host project, verify the protection instead of assuming
+it: run `git check-ignore data/decisions-registry.jsonl`. If it's already tracked (`git ls-files
+--error-unmatch`) or `check-ignore` reports it's not ignored, do not append yet — if no
+`.gitignore` rule for it exists, add the exact line `/data/decisions-registry.jsonl` to the
+host project's root `.gitignore` and re-run `check-ignore` to confirm it now matches. If the
+file is already tracked (removing it from tracking is a host-project decision this skill
+doesn't make unilaterally) or protection still can't be confirmed, don't append — pick a
+user-approved external location instead, or stop and hand off to the human. No script or
+framework needed, just the two git commands above; once protection is confirmed, appends stay
+append-only as described below. One line per hunt:
 
 ```json
 {"id": "adr-3", "date": "2026-07-19", "problem": "<solution-free statement>",
  "vocabularies": ["...", "..."], "verdict": "DEPEND", "candidate": "<name/url or null>",
+ "confidence": "high", "degraded_lanes": [], "evidence_gaps": [], "unresolved_ambiguity": [],
  "review_by": "2027-01-19", "adr_path": "docs/adr/0003-....md"}
 ```
+
+`confidence`, `degraded_lanes`, `evidence_gaps`, and `unresolved_ambiguity` carry the Judge's
+Stage 6 confidence notes forward — explicit empty arrays/`"none"` when there's nothing to
+report, not omitted fields, so a later gate or stale-decision review can't mistake "wasn't
+recorded" for "nothing was uncertain."
 
 `review_by` is not optional: prior-art conclusions rot. A DEPEND verdict on a library with a
 single maintainer should be re-checked sooner (3–6 months) than a VENDOR verdict on a small,

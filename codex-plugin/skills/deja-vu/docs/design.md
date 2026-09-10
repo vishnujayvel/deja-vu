@@ -90,14 +90,16 @@ hit, in a repo whose name shares no vocabulary with your query.
 ### 2.5 Probe
 
 READMEs undersell, oversell, and omit. The only ground truth is the artifact itself.
-For shortlisted candidates (top 1–2): clone into a disposable scratch sandbox with no
-access to secrets, credentials, or the working repo, install and smoke-test it there, and
-read the actual source of the load-bearing parts. A real observed case: a spec framework's
-configuration file contained a native extension slot that no documentation page
-mentioned — it was discovered only by running the framework's `init` in a sandbox and
-reading what it generated. A search-only evaluation had flatly missed it. Clean up the
-sandbox when the probe finishes; a probe left half-finished (for example an interrupted
-session) is the one hunt-level condition this skill calls out by name — see §7.
+For shortlisted candidates (top 1–2): clone into an enforceable disposable sandbox — a
+container, VM, or OS-level sandbox mechanism, not a bare scratch directory — with no access
+to secrets, credentials, or the working repo, install and smoke-test it there, and read the
+actual source of the load-bearing parts. If no such sandbox is available, skip execution and
+read the source statically instead, recording `hands_on_probe` as unsupported (`references/snowball-probe.md`).
+A real observed case: a spec framework's configuration file contained a native extension slot
+that no documentation page mentioned — it was discovered only by running the framework's
+`init` in a sandbox and reading what it generated. A search-only evaluation had flatly missed
+it. Clean up the sandbox when the probe finishes; a probe left half-finished (for example an
+interrupted session) is the one hunt-level condition this skill calls out by name — see §7.
 
 ### 2.6 Judge: artifact
 

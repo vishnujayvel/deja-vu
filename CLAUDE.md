@@ -34,7 +34,7 @@ test dependency, needed by `tests/test_decision_packet_schema.py`.
 
 ## Checks
 
-Run these before opening a PR — they're exactly CI's steps:
+Run these before opening a PR — they cover CI's command-based checks:
 
 ```bash
 python3 -m pytest tests/ -q
