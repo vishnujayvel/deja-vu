@@ -17,10 +17,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install test dependencies
-        run: python3 -m pip install --upgrade pip pytest
+        run: python3 -m pip install --upgrade pip pytest jsonschema
 
       - name: Run unit tests
-        run: pytest tests/ -q
+        run: python3 -m pytest tests/ -q
 
       - name: Run offline evals
         run: python3 evals/run_evals.py --offline

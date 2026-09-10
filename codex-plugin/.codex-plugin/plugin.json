@@ -1,0 +1,27 @@
+{
+  "name": "deja-vu",
+  "version": "0.1.1",
+  "description": "Structured prior-art hunt that runs before anything custom gets built.",
+  "author": {
+    "name": "Vishnu Jayavel",
+    "url": "https://github.com/vishnujayvel"
+  },
+  "homepage": "https://github.com/vishnujayvel/deja-vu",
+  "repository": "https://github.com/vishnujayvel/deja-vu",
+  "license": "MIT",
+  "keywords": ["prior-art", "research", "dependency-review", "build-vs-buy"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "deja-vu",
+    "shortDescription": "Prior-art hunt before you build custom",
+    "longDescription": "Runs a structured prior-art hunt before anything custom gets built — sweeps parallel source lanes, snowballs and probes the strongest hits, and returns a verdict (NOT-A-PROBLEM, DIFFERENT-PROBLEM, DEPEND, FORK, VENDOR, BUILD) with receipts. A BUILD verdict always requires human sign-off.",
+    "developerName": "Vishnu Jayavel",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read"],
+    "defaultPrompt": [
+      "Has anyone already solved this problem?",
+      "Check for prior art before I build this",
+      "Should I roll my own or use a library?"
+    ]
+  }
+}

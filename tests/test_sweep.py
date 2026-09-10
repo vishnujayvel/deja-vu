@@ -1,5 +1,8 @@
+import json
 import urllib.error
 import urllib.request
+
+import pytest
 
 import sweep
 from conftest import FakeHTTPResponse
@@ -41,6 +44,118 @@ def test_github_lane_http_failure_appends_error_no_crash(monkeypatch, no_gh_cli)
     assert candidates == []
     assert len(errors) == 1
     assert "github(api)" in errors[0]
+
+
+@pytest.mark.parametrize("payload", [
+    [1, 2, 3],  # top-level array instead of a dict
+    {"items": "not-a-list"},  # items isn't a list
+    {"items": ["not-a-dict", 42, None]},  # list elements aren't dicts
+    {"items": [{"license": "MIT"}]},  # license isn't a dict (string, not {key:...})
+])
+def test_github_lane_api_fallback_malformed_shape_does_not_crash(monkeypatch, no_gh_cli, payload):
+    """Round-3 finding 1: a malformed/hostile REST response must degrade to
+    an empty (or best-effort) result, never raise AttributeError."""
+    def fake_urlopen(req, timeout=10):
+        return FakeHTTPResponse(json.dumps(payload).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    candidates = sweep.github_lane("rate limiter", None, 10, errors)
+
+    assert errors == []
+    for c in candidates:
+        assert c["license"] is None or isinstance(c["license"], str)
+
+
+def test_github_lane_gh_cli_exception_is_bounded(monkeypatch):
+    monkeypatch.setattr(sweep.shutil, "which", lambda name: "/usr/bin/gh")
+
+    def fake_run(args, capture_output=True, text=True, timeout=20):
+        raise RuntimeError("x" * 500)
+
+    monkeypatch.setattr(sweep.subprocess, "run", fake_run)
+
+    def fake_urlopen(req, timeout=10):
+        raise urllib.error.URLError("network is down")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    sweep.github_lane("rate limiter", None, 10, errors)
+
+    gh_cli_errors = [e for e in errors if e.startswith("github(gh-cli):")]
+    assert len(gh_cli_errors) == 1
+    assert gh_cli_errors[0] == f"github(gh-cli): RuntimeError: {'x' * 200}"
+    assert len(gh_cli_errors[0]) < 250  # bounded, not the full 500-char message
+
+
+def test_github_lane_query_starting_with_dash_is_not_parsed_as_flag(monkeypatch):
+    """Round-3 finding 3: a --query value beginning with '-' must be treated
+    as the search term, not consumed as a gh CLI flag (e.g. '--web' would
+    open a browser)."""
+    monkeypatch.setattr(sweep.shutil, "which", lambda name: "/usr/bin/gh")
+
+    captured = {}
+
+    def fake_run(args, capture_output=True, text=True, timeout=20):
+        captured["args"] = args
+        assert "--" in args, "flag-parsing must be terminated before the query"
+        dash_idx = args.index("--")
+        assert args[dash_idx + 1:] == ["--web"], "query must be the sole positional after '--'"
+
+        class FakeProc:
+            returncode = 0
+            stdout = "[]"
+            stderr = ""
+
+        return FakeProc()
+
+    monkeypatch.setattr(sweep.subprocess, "run", fake_run)
+
+    def fake_urlopen(req, timeout=10):
+        raise urllib.error.URLError("network is down")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    sweep.github_lane("--web", None, 10, errors)
+
+    assert captured["args"][-1] == "--web"
+
+
+def test_github_lane_narrow_retry_exception_is_bounded(monkeypatch):
+    monkeypatch.setattr(sweep.shutil, "which", lambda name: "/usr/bin/gh")
+
+    class FakeProc:
+        def __init__(self, returncode, stdout, stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    calls = {"n": 0}
+
+    def fake_run(args, capture_output=True, text=True, timeout=20):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return FakeProc(0, "[]")  # full query -> 0 repos, triggers narrowing
+        raise RuntimeError("y" * 500)  # every narrowed retry also fails
+
+    monkeypatch.setattr(sweep.subprocess, "run", fake_run)
+
+    def fake_urlopen(req, timeout=10):
+        raise urllib.error.URLError("network is down")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    sweep.github_lane("a b c d e", None, 10, errors)  # 5 terms -> narrows at 4w, 3w, 2w
+
+    narrow_errors = [e for e in errors if e.startswith("github(narrow-")]
+    assert len(narrow_errors) == 3
+    for e in narrow_errors:
+        assert e.endswith(f"RuntimeError: {'y' * 200}")
+        assert len(e) < 250
 
 
 # -------------------------------------------------------------- registry ---
@@ -130,6 +245,85 @@ def test_registry_lane_no_language_hits_all_three(monkeypatch, load_fixture_byte
     assert lanes_hit == {"registry:npm", "registry:pypi", "registry:crates"}
 
 
+@pytest.mark.parametrize("payload", [
+    ["a", "b"],  # top-level array instead of a dict
+    {"objects": "not-a-list"},
+    {"objects": ["not-a-dict"]},
+])
+def test_registry_lane_npm_malformed_shape_does_not_crash(monkeypatch, payload):
+    """Round-3 finding 1: malformed npm search response must not raise."""
+    def fake_urlopen(req, timeout=10):
+        if "registry.npmjs.org" in req.full_url:
+            return FakeHTTPResponse(json.dumps(payload).encode("utf-8"))
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    candidates = sweep.registry_lane("rate limiter", "javascript", 10, errors)
+
+    assert candidates == []
+    assert errors == []
+
+
+def test_registry_lane_npm_non_dict_package_field_degrades_without_crash(monkeypatch):
+    """Round-3 finding 1: a dict list-element whose nested 'package' field
+    isn't itself a dict must degrade to a best-effort candidate, not raise."""
+    payload = {"objects": [{"package": "not-a-dict"}]}
+
+    def fake_urlopen(req, timeout=10):
+        if "registry.npmjs.org" in req.full_url:
+            return FakeHTTPResponse(json.dumps(payload).encode("utf-8"))
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    candidates = sweep.registry_lane("rate limiter", "javascript", 10, errors)
+
+    assert errors == []
+    assert len(candidates) == 1
+    assert candidates[0]["name"] is None
+
+
+@pytest.mark.parametrize("payload", [
+    ["a", "b"],
+    {"info": "not-a-dict"},
+])
+def test_registry_lane_pypi_malformed_shape_does_not_crash(monkeypatch, payload):
+    """Round-3 finding 1: malformed PyPI response must not raise."""
+    def fake_urlopen(req, timeout=10):
+        return FakeHTTPResponse(json.dumps(payload).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    candidates = sweep.registry_lane("example-pkg", "python", 10, errors)
+
+    assert errors == []
+    assert len(candidates) == 1
+    assert candidates[0]["name"] is None
+
+
+@pytest.mark.parametrize("payload", [
+    ["a", "b"],
+    {"crates": "not-a-list"},
+    {"crates": ["not-a-dict"]},
+])
+def test_registry_lane_crates_malformed_shape_does_not_crash(monkeypatch, payload):
+    """Round-3 finding 1: malformed crates.io response must not raise."""
+    def fake_urlopen(req, timeout=10):
+        return FakeHTTPResponse(json.dumps(payload).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    candidates = sweep.registry_lane("rate limiter", "rust", 10, errors)
+
+    assert candidates == []
+    assert errors == []
+
+
 def test_registry_lane_npm_failure_appends_error(monkeypatch):
     def fake_urlopen(req, timeout=10):
         if "registry.npmjs.org" in req.full_url:
@@ -203,6 +397,21 @@ def test_grep_lane_429_exhausted_graceful_skip(monkeypatch):
     assert "rate limited" in errors[0]
 
 
+def test_grep_lane_generic_exception_is_bounded(monkeypatch):
+    def fake_urlopen(req, timeout=10):
+        raise ValueError("z" * 500)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    candidates = sweep.grep_lane("token bucket", None, 10, errors, sleep_fn=lambda s: None)
+
+    assert candidates == []
+    assert len(errors) == 1
+    assert errors[0] == f"grep: ValueError: {'z' * 200}"
+    assert len(errors[0]) < 250  # bounded, not the full 500-char message
+
+
 def test_grep_lane_no_pattern_returns_empty_without_network(monkeypatch):
     def fake_urlopen(req, timeout=10):
         raise AssertionError("should never be called when pattern is empty")
@@ -244,6 +453,79 @@ def test_scorecard_lane_404_is_not_an_error(monkeypatch):
 
     assert errors == []
     assert candidates[0]["scorecard"] is None
+
+
+def test_scorecard_lane_malformed_shape_does_not_crash(monkeypatch):
+    """Round-3 finding 1: a top-level array (or non-dict score payload) from
+    the scorecard API must not raise AttributeError."""
+    def fake_urlopen(req, timeout=10):
+        return FakeHTTPResponse(json.dumps(["not", "a", "dict"]).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    candidates = [sweep.empty_candidate(name="example/rate-limiter", source_lane="github")]
+    errors = []
+    sweep.scorecard_lane(candidates, errors)
+
+    assert errors == []
+    assert candidates[0]["scorecard"] == {"score": None, "date": None}
+
+
+@pytest.mark.parametrize("hostile_name", [
+    "x/../../projects/github.com/other/repo",
+    "../..",
+    "owner/..",
+    "owner/repo?x=1",
+    "owner/repo with spaces",
+    "owner/repo#frag",
+])
+def test_scorecard_lane_rejects_path_traversal_names(monkeypatch, hostile_name):
+    """Round-3 finding 2: quote(name, safe='/') never encodes '.', so a
+    hostile name containing '../' must be rejected before it is ever
+    interpolated into the scorecard request URL — not merely quoted."""
+    def fake_urlopen(req, timeout=10):
+        raise AssertionError(f"must never fetch for unsafe name, tried {req.full_url}")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    candidates = [sweep.empty_candidate(name=hostile_name, source_lane="github")]
+    errors = []
+    sweep.scorecard_lane(candidates, errors)
+
+    assert candidates[0]["scorecard"] is None
+    assert any("unsafe" in e for e in errors)
+
+
+def test_scorecard_lane_rejects_non_string_name_without_raising(monkeypatch):
+    """A truthy non-string name (e.g. an int) is unsafe by `_is_safe_github_name`,
+    but the error message must not slice it as if it were a string — that raised
+    TypeError and escaped the no-throw sweep."""
+    def fake_urlopen(req, timeout=10):
+        raise AssertionError(f"must never fetch for unsafe name, tried {req.full_url}")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    candidates = [sweep.empty_candidate(name=42, source_lane="github")]
+    errors = []
+    sweep.scorecard_lane(candidates, errors)
+
+    assert candidates[0]["scorecard"] is None
+    assert any("unsafe" in e for e in errors)
+
+
+def test_scorecard_lane_enriches_narrowed_github_candidates(monkeypatch, load_fixture_bytes):
+    def fake_urlopen(req, timeout=10):
+        assert "api.securityscorecards.dev" in req.full_url
+        return FakeHTTPResponse(load_fixture_bytes("scorecard.json"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    candidates = [sweep.empty_candidate(name="example/rate-limiter", source_lane="github(narrowed:3w)")]
+    errors = []
+    sweep.scorecard_lane(candidates, errors)
+
+    assert errors == []
+    assert candidates[0]["scorecard"] == {"score": 7.8, "date": "2026-06-15"}
 
 
 def test_scorecard_lane_skips_non_github_candidates(monkeypatch):
@@ -344,3 +626,19 @@ def test_run_sweep_output_has_no_composite_score_field(monkeypatch):
     for candidate in result["candidates"]:
         assert "score" not in candidate  # no per-candidate composite score
     assert set(result.keys()) == {"query", "lanes_run", "candidates", "errors"}
+
+
+# ------------------------------------------------------------------- cli ---
+
+def test_limit_rejects_zero_and_negative():
+    parser = sweep.build_arg_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--query", "q", "--limit", "0"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--query", "q", "--limit", "-1"])
+
+
+def test_limit_accepts_positive_int():
+    parser = sweep.build_arg_parser()
+    args = parser.parse_args(["--query", "q", "--limit", "5"])
+    assert args.limit == 5

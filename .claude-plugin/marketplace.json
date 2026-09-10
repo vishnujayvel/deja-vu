@@ -1,0 +1,14 @@
+{
+  "name": "deja-vu-marketplace",
+  "owner": {
+    "name": "Vishnu Jayavel"
+  },
+  "description": "Repo-local marketplace for the deja-vu prior-art-hunt skill.",
+  "plugins": [
+    {
+      "name": "deja-vu",
+      "source": "./codex-plugin",
+      "description": "Structured prior-art hunt that runs before anything custom gets built."
+    }
+  ]
+}

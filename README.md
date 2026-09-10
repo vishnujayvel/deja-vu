@@ -2,32 +2,27 @@
 
 > The skill that gives your agent the feeling it has seen this problem before.
 
-A Claude Code / Claude Agent Skill that runs a structured prior-art hunt **before** anything
-custom gets built. It's the pause between "here is the problem" and "here is my design" — the
-question coding agents (and humans) systematically skip: *who has already solved this?*
+A skill for Claude Code and Codex that runs a structured prior-art hunt **before** anything
+custom gets built.
 
-## Philosophy
+## The problem
 
-Most problems are already solved; the gap is *seeing* the solution. The economics are brutally
-asymmetric — finding an existing solution costs minutes, rebuilding it costs hours now and
-maintenance forever, and every dependency you don't reinvent hands you battle-tested edge cases
-for free. deja-vu closes that gap with a ten-stage loop, each stage earned by a specific,
-observed failure mode: it re-frames the problem before searching (so it doesn't search for the
-wrong thing well), sweeps eight blind parallel source lanes (so it doesn't miss a whole category
-of prior art), snowballs and hands-on probes the strongest hits (so it doesn't trust a README
-that undersells its own project), judges on a declared, unweighted rubric instead of star count,
-and — the part most "check for prior art" prompts skip — refuses to let a BUILD verdict
-self-approve. Adopting, forking, or vendoring proceeds on the agent's own judgment; building
-custom goes to a human with receipts.
+You're mid-task, someone says "we need a rate limiter" (or an auth flow, a retry helper, a
+link checker for the docs), and the reflex is to open a new file and start writing it. Later
+you find out a maintained library already handled the edge cases you just hit — this skill is
+the pause that checks for that library first.
 
-Full design rationale, the failure-mode-per-stage derivation, and every ADR: [`docs/design.md`](docs/design.md).
+deja-vu asks "has someone already solved this?" through a ten-stage loop, then backs whatever
+it finds with the actual repos, license, and health data it checked, not a star count. Full
+design rationale and the failure mode each stage addresses: [`docs/design.md`](docs/design.md).
 
 ## Install
 
 **Option A — git clone + symlink** (full control over the checkout location):
 
 ```bash
-git clone <this-repo-url> "$HOME/workplace/deja-vu"
+git clone https://github.com/vishnujayvel/deja-vu "$HOME/workplace/deja-vu"
+mkdir -p "$HOME/.claude/skills"
 ln -s "$HOME/workplace/deja-vu" "$HOME/.claude/skills/deja-vu"
 ```
 
@@ -41,20 +36,49 @@ ls -la "$HOME/.claude/skills/deja-vu"
 GitHub, no manual clone):
 
 ```bash
-npx skills add <owner>/deja-vu
-# or, with the full URL:
-npx skills add https://github.com/<owner>/deja-vu
+npx skills add vishnujayvel/deja-vu
 ```
 
-Either way, that's the whole install — `SKILL.md`'s frontmatter is what makes Claude Code
-pick it up automatically on build-ish prompts.
+Either way, that's the whole install — `SKILL.md`'s frontmatter is what Claude Code reads to
+decide when to bring the skill in.
+
+**Option C — native plugin (Claude Code or Codex)**: this repo also ships a repo-local
+marketplace (`.claude-plugin/marketplace.json`) that both clients' native plugin installers can
+read directly — no manual symlink, and the client manages updates/removal for you.
+
+Both CLIs accept the GitHub shorthand directly, no local checkout required:
+
+```bash
+claude plugin marketplace add vishnujayvel/deja-vu
+claude plugin install deja-vu@deja-vu-marketplace
+
+codex plugin marketplace add vishnujayvel/deja-vu
+codex plugin add deja-vu@deja-vu-marketplace
+```
+
+Or point the same commands at a local checkout instead of the GitHub shorthand
+(`claude plugin marketplace add ./`, `codex plugin marketplace add ./`) if you're working from
+a clone rather than installing fresh.
+
+**Use it**: once installed, deja-vu is designed to activate on its own for build-shaped requests
+in either client (see "Try it" below) — neither client needs a special slash command. The
+reliable way to invoke it, especially right after installing, is to ask directly: "run a deja-vu
+hunt on this" / "check for prior art before I build this."
+
+Verify with `claude plugin list` / `codex plugin list`. Remove with `claude plugin uninstall
+deja-vu@deja-vu-marketplace` then `claude plugin marketplace remove deja-vu-marketplace` (Codex:
+`codex plugin remove deja-vu@deja-vu-marketplace` then `codex plugin marketplace remove
+deja-vu-marketplace`).
 
 ### Optional dependencies (the skill degrades gracefully without them)
 
 - **octocode-mcp** — gives the GitHub lane real code search/reading instead of just repo
-  metadata:
+  metadata. Install the exact pinned version yourself first (no unattended `npx ...@latest` at
+  startup — this is an explicit, user-controlled install, not a claim the whole package is
+  audited/safe), then point Claude Code at the installed binary:
   ```bash
-  claude mcp add-json octocode --scope user '{"command":"npx","type":"stdio","args":["@octocodeai/mcp@latest"]}'
+  npm install --global @octocodeai/mcp@18.0.1
+  claude mcp add-json octocode --scope user '{"command":"octocode-mcp","type":"stdio","args":[]}'
   ```
 - **last30days** — feeds the freshness lane recent Reddit/X/HN/YouTube signal instead of a plain
   web search. If you already have it installed as a skill, deja-vu picks it up automatically.
@@ -64,118 +88,105 @@ run with nothing beyond a Python 3 interpreter and network access.
 
 ## Setup check
 
-After installing, run:
+For Option A/B, `cd` into the installed skill directory (e.g. `$HOME/.claude/skills/deja-vu`
+for Option A, or wherever `npx skills add` placed it for Option B) and run:
 
 ```bash
 python3 scripts/doctor.py
 ```
 
+For Option C (native plugin), the skill resolves its own bundled scripts by absolute path (see
+`SKILL.md`), so no `cd` is needed — just ask the agent to run the doctor check, or invoke the
+same script directly at its installed cache path.
+
 It prints one `DOCTOR: PASS|WARN|FAIL` line per dependency (gh CLI, octocode MCP, grep.app,
 OpenSSF Scorecard API, skills CLI, last30days). It exits nonzero only when a REQUIRED check
-fails; optional lanes degrade to WARN, and each WARN line names its install command.
+fails; optional lanes degrade to WARN with actionable guidance (an install/auth command where
+one applies, or a pointer to the relevant project otherwise).
 
 Illustrative sample output:
 
 ```
 DOCTOR: PASS python3
 DOCTOR: PASS github
-DOCTOR: WARN last30days — install: npx skills add last30days (or install as a Claude Code skill)
+DOCTOR: WARN last30days -- not installed -- optional freshness lane; see github.com/mvanhorn/last30days-skill
 ```
 
-## A worked example (fully synthetic)
+## Try it
 
-> Everything below — repo names, star counts, maintainer handles, dates — is **illustrative,
-> fabricated for this README**, not a real hunt. It shows the shape of the output, not a real
-> verdict.
+deja-vu is designed to fire on its own when a prompt looks like it's about to scaffold
+something commodity-ish — you don't have to name it. For example:
 
-**Prompt:** "I'll write a token-bucket rate limiter for our API gateway."
+> "I'll write a token-bucket rate limiter for our API gateway."
 
-**Stage 0 (Re-problem):** Solution-free restatement — "prevent one client from starving the
-gateway's fixed downstream budget." Five whys don't surface a different problem; a null solution
-(raising the downstream budget) was already ruled out by the team as too costly. Survives —
-proceed.
+If it doesn't trigger, or you want to force a hunt, ask for it directly: "run a deja-vu hunt
+on this" works too. Either way, it reframes the problem, sweeps the sources below at a depth
+matched to how hard the choice is to reverse, and returns one of six verdicts backed by
+whatever it actually found. The result is a recommendation with sources, saved as a decision
+record in your project. Full hunts may also clone, install, and try shortlisted tools; the skill
+instructs the agent to run those probes in an enforceable disposable sandbox (container, VM,
+or OS-level sandbox), never a bare scratch directory — and to fall back to a static source
+read, not execution, when no such sandbox is available.
 
-**Stage 1 (Trigger/tier):** Registry check: no prior entry for this problem. Stakes classifier:
-this sits on every request path and will be depended on indefinitely → **Full** tier.
+## Where it looks
 
-**Stage 2 (Framing):** Vocabularies — "rate limiter," "token bucket / leaky bucket algorithm,"
-"API throttling middleware." Exclusion criteria pre-registered: no LICENSE file disqualifies
-FORK/VENDOR; unmaintained (no commits in 12 months) disqualifies DEPEND.
+Stage 3 (Sweep) runs `scripts/sweep.py` for the sources below it can query directly, and
+dispatches the rest as agent research. Which lanes run depends on the tier the hunt picked —
+a quick, easily-reversed choice only checks the first two; a full, hard-to-reverse one runs
+all of them:
 
-**Stage 3 (Sweep), illustrative excerpt from `sweep.py`:**
+| Lane | Kind | What it checks | Runs at |
+|---|---|---|---|
+| GitHub repos | `sweep.py` | Repos claiming to solve the problem — via `gh search repos` if the `gh` CLI is available, else the unauthenticated GitHub REST search API | every tier |
+| Package registries | `sweep.py` | npm and crates.io by keyword; PyPI by exact package name (no public keyword-search API) | every tier |
+| Code pattern search (grep.app) | `sweep.py` | Does anyone actually write this pattern, over ~1M public repos? | standard tier and up |
+| Maintainer health ([OpenSSF Scorecard](https://openssf.org/projects/scorecard/)) | `sweep.py` | Is it maintained safely? | standard tier and up |
+| Curation ([LibHunt](https://www.libhunt.com/), awesome-lists) | Agent research | What do humans say the alternatives are? | as needed |
+| Freshness (`last30days`, if installed) | Agent research (optional) | Did something ship in the last 30 days? | full tier |
+| Skills ecosystem (`npx skills search`) | Agent research | Is this already an agent skill? | as needed |
+| General web | Agent research | What do comparisons/reviews say? | as needed |
 
-```json
-{"query": "token bucket rate limiter", "lanes_run": ["github", "registries", "scorecard"],
- "candidates": [
-   {"name": "acme-org/ratelimit-go", "url": "https://github.com/acme-org/ratelimit-go",
-    "source_lane": "github", "stars": 4200, "last_push": "2026-06-30",
-    "license": "Apache-2.0", "scorecard": {"score": 8.1}},
-   {"name": "someone/twitter-scrape-tool", "url": "https://github.com/someone/twitter-scrape-tool",
-    "source_lane": "github", "stars": 9800, "last_push": "2024-01-02",
-    "license": "MIT", "scorecard": {"score": 3.2}}
- ], "errors": []}
-```
+## A real example
 
-The second hit has more than double the stars and gets discarded immediately — it's an
-unrelated scraper that happened to match the search term (the real failure mode this stage
-guards against; see `references/judge.md`).
+deja-vu ran on itself. When this repo needed CI to catch dead documentation links, the reflex
+was to write a small link-checker script — exactly the reflex this skill exists to interrupt.
+The hunt is recorded in
+[`docs/adr/0001-link-checking-depend-lychee.md`](docs/adr/0001-link-checking-depend-lychee.md):
+it compared several link-checking tools against a declared rubric (CI fit, license, activity,
+rate-limit handling) — one candidate was excluded outright for having gone dormant — and landed
+on **DEPEND**: adopt [`lycheeverse/lychee`](https://github.com/lycheeverse/lychee) unmodified,
+via [`lycheeverse/lychee-action`](https://github.com/lycheeverse/lychee-action) in CI.
 
-**Stage 4–5 (Snowball/Probe):** `acme-org/ratelimit-go` forks and depends on a smaller primitive,
-`acme-org/bucket-core`, which turns out to be the more composable piece for this use case. Cloned
-both into a scratch sandbox; ran their test suites; read the token-refill implementation —
-matches the README, no surprises.
+The first CI run using it caught real dead links in this repo's own docs; the fix is
+[`db1f4aa`](https://github.com/vishnujayvel/deja-vu/commit/db1f4aad77c90f389981f2e05a98f3d2fbe9e1f7).
 
-**Stage 6 (Judge):** Declared weights — health > license > competency (commodity plumbing on a
-hot path). Health: 6 contributors active in the last 90 days, no single-org concentration,
-Scorecard 8.1. License: Apache-2.0, permissive, no trap. Competency: rate limiting is not this
-team's differentiator. Fence check: the library assumes a single-process in-memory bucket by
-default and needs a Redis-backed variant for the actual multi-instance gateway — a real,
-inheritable gap, not disqualifying, but worth knowing going in.
+## Limitations
 
-**Stage 6b (Provenance):**
-
-```json
-{"profiles": [{"login": "acme-maintainer", "company": "Acme Infra Co.", "account_age_years": 6.5,
-  "followers": 340, "public_repos": 41, "signal": "established-practitioner"}]}
-```
-
-**Stage 7 (Gate):** DEPEND proceeds without human sign-off — that's the point of the asymmetric
-gate.
-
-**Verdict: DEPEND** on `acme-org/ratelimit-go` (Redis-backed configuration), with a follow-up
-note in the ADR about the in-memory-default fence.
-
-**Stage 8 (Record):** ADR written; registry line appended with `review_by` six months out
-(single-org-adjacent health signal warrants a shorter recheck than a fully diffuse-maintainer
-project would).
+- **Six verdicts, no synthesis step** — NOT-A-PROBLEM, DIFFERENT-PROBLEM, DEPEND, FORK, VENDOR,
+  BUILD. If the real answer is "combine two libraries," that judgment call is still yours.
+- Not every lane runs on every hunt — the tier picked in Stage 1 decides which of the sources
+  above get checked (see the table).
+- The scripted lanes need network access; `python3 scripts/doctor.py` tells you exactly what's
+  missing or degraded before you rely on results.
+- Agent-research lanes (curation, freshness, skills ecosystem, general web) depend on what's
+  installed and how the hunt is invoked — a WARN from `doctor.py` means a lane degraded, not
+  that the hunt failed.
+- deja-vu hands you a verdict and the evidence behind it, not a merged change. Unflagged
+  DEPEND/FORK/VENDOR proceed on the agent's own judgment; BUILD always requires explicit human
+  sign-off, and so does any DEPEND/FORK/VENDOR that Judge (stage 6) flagged — a flag revokes the
+  agent's authority to proceed on its own exactly like BUILD.
+- A hunt can still miss prior art that uses different vocabulary than the ones it tried
+  (`references/framing.md` covers how it tries to mitigate this).
 
 ## Credits
 
-deja-vu borrows every algorithm in its loop from published prior art — the only new part is the
-loop that composes them, and even that was searched for before being built (see `docs/design.md`
-§6 for the full prior-art hunt this skill ran on itself). Named with gratitude:
-
-- [build-vs-borrow](https://github.com/trelmitt/claude-skills/tree/main/build-vs-borrow) — the
-  closest prior art: an 8-stage DEPEND/FORK/VENDOR/BUILD pipeline with a working stdlib scout
-  script. Reimplemented rather than forked (no LICENSE file, unknown-experimental provenance) —
-  see ADR-1 in `docs/design.md`.
-- [find-skills](https://github.com/vercel-labs/skills) — solves a different, adjacent problem
-  (finding installable agent skills); wired in as the skills-ecosystem lane.
-- Kitchenham & Charters' systematic-review protocol — pre-registered inclusion/exclusion
-  criteria, the backbone of `references/framing.md`.
-- [Wohlin's snowballing guidelines](https://www.wohlin.eu/ease14.pdf) — the backward/forward hop
-  method in `references/snowball-probe.md`.
-- [QSOS](https://en.wikipedia.org/wiki/QSOS) — context-weighted, declare-first scoring instead
-  of a single composite number.
-- [CHAOSS](https://chaoss.community/) — the contributor-absence-factor health signal.
-- [OpenSSF Scorecard](https://openssf.org/projects/scorecard/) — automated repo health checks.
-- [Choose Boring Technology](https://mcfunley.com/choose-boring-technology) — the reversibility
-  framing in the rubric.
-- [In Defense of Not-Invented-Here Syndrome](https://www.joelonsoftware.com/2001/10/14/in-defense-of-not-invented-here-syndrome/)
-  (Spolsky) — the competency-test dimension: commodity plumbing defaults to adopt.
-
-Full citation list, including SEI PECA, Endor Labs' reachability principle, and the
-Chesterton's-Fence/Hyrum's-Law fence check, is in `docs/design.md` §6.
+deja-vu's loop composes ideas from published prior art (deja-vu ran on itself before being
+built; see [`docs/design.md`](docs/design.md) §6). Closest prior art:
+[build-vs-borrow](https://github.com/trelmitt/claude-skills/tree/main/build-vs-borrow), an
+8-stage DEPEND/FORK/VENDOR/BUILD pipeline reimplemented here rather than forked (no LICENSE
+file, unknown-experimental provenance). Full citation list — Kitchenham & Charters' systematic
+review protocol, Wohlin's snowballing guidelines, QSOS, CHAOSS, OpenSSF Scorecard, and more —
+is in `docs/design.md` §6.
 
 ## License
 
