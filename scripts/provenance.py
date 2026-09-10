@@ -226,8 +226,12 @@ def main(argv=None):
     if args.input == "-":
         raw = sys.stdin.read()
     else:
-        with open(args.input, "r", encoding="utf-8") as f:
-            raw = f.read()
+        try:
+            with open(args.input, "r", encoding="utf-8") as f:
+                raw = f.read()
+        except OSError as e:
+            print(json.dumps({"profiles": [], "errors": [f"provenance: rejected -- cannot read --input: {e}"]}, indent=2))
+            return 1
     try:
         doc = json.loads(raw)
     except json.JSONDecodeError as e:

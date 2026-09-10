@@ -286,3 +286,14 @@ def test_main_reads_input_file_via_context_manager(tmp_path, load_fixture_json, 
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
     assert [p["login"] for p in out["profiles"]] == ["alice-example"]
+
+
+def test_main_missing_input_file_reports_error_instead_of_raising(tmp_path, capsys):
+    missing_path = tmp_path / "does-not-exist.json"
+
+    rc = provenance.main(["--input", str(missing_path), "--now", "2026-01-01T00:00:00Z"])
+
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["profiles"] == []
+    assert any("cannot read --input" in e for e in out["errors"])

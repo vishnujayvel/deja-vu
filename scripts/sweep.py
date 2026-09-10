@@ -388,7 +388,9 @@ def scorecard_lane(candidates, errors):
         # "owner/repo" in GitHub's allowed charset, with no '.' / '..'
         # segment, before it's ever interpolated into the URL.
         if not _is_safe_github_name(c["name"]):
-            errors.append(f"scorecard: skipped unsafe candidate name {c['name'][:80]!r}")
+            errors.append(
+                f"scorecard: skipped unsafe candidate name {repr(c['name'])[:80]}"
+            )
             c["scorecard"] = None
             continue
         url = f"https://api.securityscorecards.dev/projects/github.com/{urllib.parse.quote(c['name'], safe='/')}"

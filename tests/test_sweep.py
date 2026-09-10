@@ -496,6 +496,23 @@ def test_scorecard_lane_rejects_path_traversal_names(monkeypatch, hostile_name):
     assert any("unsafe" in e for e in errors)
 
 
+def test_scorecard_lane_rejects_non_string_name_without_raising(monkeypatch):
+    """A truthy non-string name (e.g. an int) is unsafe by `_is_safe_github_name`,
+    but the error message must not slice it as if it were a string — that raised
+    TypeError and escaped the no-throw sweep."""
+    def fake_urlopen(req, timeout=10):
+        raise AssertionError(f"must never fetch for unsafe name, tried {req.full_url}")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    candidates = [sweep.empty_candidate(name=42, source_lane="github")]
+    errors = []
+    sweep.scorecard_lane(candidates, errors)
+
+    assert candidates[0]["scorecard"] is None
+    assert any("unsafe" in e for e in errors)
+
+
 def test_scorecard_lane_enriches_narrowed_github_candidates(monkeypatch, load_fixture_bytes):
     def fake_urlopen(req, timeout=10):
         assert "api.securityscorecards.dev" in req.full_url
