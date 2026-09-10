@@ -297,3 +297,20 @@ def test_main_missing_input_file_reports_error_instead_of_raising(tmp_path, caps
     out = json.loads(capsys.readouterr().out)
     assert out["profiles"] == []
     assert any("cannot read --input" in e for e in out["errors"])
+    # The read-failure message must not disclose the full supplied path.
+    assert not any(str(missing_path) in e for e in out["errors"])
+
+
+def test_main_invalid_utf8_input_reports_error_instead_of_raising(tmp_path, capsys):
+    # decoding happens inside the same open().read() as the OSError guard;
+    # invalid UTF-8 must not escape as an uncaught UnicodeDecodeError.
+    bad_path = tmp_path / "owners.json"
+    bad_path.write_bytes(b"\xff\xfe\x00invalid")
+
+    rc = provenance.main(["--input", str(bad_path), "--now", "2026-01-01T00:00:00Z"])
+
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["profiles"] == []
+    assert any("cannot read --input" in e for e in out["errors"])
+    assert not any(str(bad_path) in e for e in out["errors"])

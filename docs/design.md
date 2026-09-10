@@ -217,7 +217,7 @@ each other, each returning candidates + receipts.
 | **GitHub** | What repos claim to solve this? | `gh search repos --topic <t> --sort stars --json fullName,description,stargazersCount,url` + octocode-mcp for repo analysis and code reading |
 | **Curation** | What do humans say the alternatives are? | LibHunt URL-swap (`github.com/x/y` → `libhunt.com/x/y`); awesome-/best-of lists via web fetch |
 | **Pattern** | Does anyone actually *write* this? | `curl 'https://grep.app/api/search?q=<pattern>'` — regex over ~1M public repos |
-| **Probe** | What does the artifact actually do? | DeepWiki URL-swap (`github.com` → `deepwiki.com`) for architecture Q&A; sandbox install/run in a scratch dir |
+| **Probe** | What does the artifact actually do? | DeepWiki URL-swap (`github.com` → `deepwiki.com`) for architecture Q&A; install/run inside an enforceable disposable sandbox, never a bare scratch dir |
 | **Registries + health** | Is it published, maintained, safe? | npm / PyPI / crates.io APIs; OpenSSF Scorecard API (`api.securityscorecards.dev`) |
 | **Freshness** | Did someone ship this in the last 30 days? | `last30days` skill if installed (Reddit/X/HN/YouTube sweep); degrade gracefully to web search if absent |
 | **Skills ecosystem** | Did someone build this as an agent skill? | skills.sh / vercel-labs find-skills |

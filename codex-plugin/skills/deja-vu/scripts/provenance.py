@@ -230,7 +230,11 @@ def main(argv=None):
             with open(args.input, "r", encoding="utf-8") as f:
                 raw = f.read()
         except OSError as e:
-            print(json.dumps({"profiles": [], "errors": [f"provenance: rejected -- cannot read --input: {e}"]}, indent=2))
+            reason = e.strerror or e.__class__.__name__
+            print(json.dumps({"profiles": [], "errors": [f"provenance: rejected -- cannot read --input: {reason}"]}, indent=2))
+            return 1
+        except UnicodeDecodeError as e:
+            print(json.dumps({"profiles": [], "errors": [f"provenance: rejected -- cannot read --input: invalid UTF-8 ({e.reason})"]}, indent=2))
             return 1
     try:
         doc = json.loads(raw)

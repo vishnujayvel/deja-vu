@@ -45,13 +45,15 @@ An append-only JSONL file, `data/decisions-registry.jsonl` (gitignored — it ac
 project-specific, sometimes sensitive, history and should not ship in a public repo template).
 
 Before the first create-or-append in a host project, verify the protection instead of assuming
-it: run `git check-ignore data/decisions-registry.jsonl`. If it's already tracked (`git ls-files
---error-unmatch`) or `check-ignore` reports it's not ignored, do not append yet — if no
-`.gitignore` rule for it exists, add the exact line `/data/decisions-registry.jsonl` to the
-host project's root `.gitignore` and re-run `check-ignore` to confirm it now matches. If the
-file is already tracked (removing it from tracking is a host-project decision this skill
-doesn't make unilaterally) or protection still can't be confirmed, don't append — pick a
-user-approved external location instead, or stop and hand off to the human. No script or
+it: run `git ls-files --error-unmatch data/decisions-registry.jsonl` (exit `0` means the file is
+already tracked; exit `1` means it isn't) and `git check-ignore data/decisions-registry.jsonl`
+(exit `0` means it's ignored; exit `1` means it isn't). Both must exit `1`/`0` respectively —
+untracked and ignored — before an append. If `check-ignore` exits `1` and no `.gitignore` rule
+for it exists, add the exact line `/data/decisions-registry.jsonl` to the host project's root
+`.gitignore` and re-run `check-ignore` to confirm it now matches. If `ls-files --error-unmatch`
+exits `0` (the file is already tracked — removing it from tracking is a host-project decision
+this skill doesn't make unilaterally) or protection still can't be confirmed, don't append —
+pick a user-approved external location instead, or stop and hand off to the human. No script or
 framework needed, just the two git commands above; once protection is confirmed, appends stay
 append-only as described below. One line per hunt:
 

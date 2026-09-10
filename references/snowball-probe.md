@@ -83,8 +83,11 @@ extension mechanism," "how does it handle X" — it's faster than reading cold, 
 substitute for running the code; treat its answers as a map, not a verdict.
 
 Depth by tier: **Quick** and **Standard** skip the hands-on clone (DeepWiki Q&A only, if used at
-all). **Full** — always clone and run, no exceptions; this is the tier where being wrong is
-expensive enough that a README's word isn't good enough.
+all). **Full** — always attempt the hands-on clone when an enforceable sandbox is available; this
+is the tier where being wrong is expensive enough that a README's word isn't good enough. When no
+enforceable sandbox is available, the fallback above still applies: static read only,
+`hands_on_probe: unsupported`, and `required_human_decision` — never clone-and-run without
+isolation.
 
 Clean up `.scratch/` when the hunt concludes — it's gitignored but no reason to leave it around.
 
