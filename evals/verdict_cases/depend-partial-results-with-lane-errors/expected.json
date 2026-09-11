@@ -1,0 +1,9 @@
+{
+  "verdict": "DEPEND",
+  "key_reasons": [
+    "openrl/token-bucket-py is MIT-licensed, actively maintained (pushed within the last 30 days), and an established-practitioner maintainer signal -- a direct fit for a token-bucket rate limiter",
+    "the grep.app lane exhausted its 429 backoff and errored; this limits code-pattern-search depth but does not block adopting an already well-evidenced candidate from the github lane",
+    "residual uncertainty: an unexplored grep lane could still surface a smaller or better-fit alternative -- record this gap rather than treating the sweep as fully exhaustive",
+    "rate limiting is commodity plumbing, not this team's differentiator -- the competency test defaults to adopt when a solid permissively-licensed candidate is already in hand"
+  ]
+}

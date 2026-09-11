@@ -1,0 +1,13 @@
+{
+  "problem": "need a validator for our internal purchase-order numbering scheme (format PO-YYYY-NNNNN-<region>)",
+  "sweep": {
+    "query": "purchase order numbering scheme validator PO-YYYY-NNNNN region code",
+    "lanes_run": ["github", "registry"],
+    "candidates": [],
+    "errors": []
+  },
+  "provenance": {
+    "profiles": [],
+    "errors": []
+  }
+}

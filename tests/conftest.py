@@ -9,6 +9,10 @@ SCRIPTS_DIR = ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+EVALS_DIR = ROOT / "evals"
+if str(EVALS_DIR) not in sys.path:
+    sys.path.insert(0, str(EVALS_DIR))
+
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
