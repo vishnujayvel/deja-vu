@@ -286,6 +286,59 @@ def validate_verdict_case(dir_path, errors):
             f"verdict_cases/{dir_path.name}/expected.json: 'key_reasons' must be a "
             f"non-empty list of non-empty strings"
         )
+        return
+
+    check_verdict_acknowledges_sweep_errors(dir_path, input_obj, expected_obj, errors)
+    check_null_license_candidates_are_acknowledged(dir_path, input_obj, expected_obj, errors)
+
+
+# A verdict fixture is dishonest, not just schema-valid, if it stays silent
+# about coverage loss. docs/design.md §2.3: "degraded", "failed", "skipped",
+# and "unsupported" are distinct from a proven absence of results -- an empty
+# candidates[] next to a non-empty sweep.errors[] must never read like a
+# clean successful-empty search. This is a keyword check, not a semantic
+# proof: it only guards against a fixture that never mentions the loss at
+# all, the same way check_families_present guards SKILL.md drift.
+COVERAGE_LOSS_TERMS = (
+    "error", "degrad", "unsupported", "coverage", "uncertain", "fail",
+    "incomplete", "residual", "inconclusive",
+)
+
+
+def check_verdict_acknowledges_sweep_errors(dir_path, input_obj, expected_obj, errors):
+    sweep_errors = (input_obj.get("sweep") or {}).get("errors")
+    if not isinstance(sweep_errors, list) or not sweep_errors:
+        return
+    reasons_blob = " ".join(expected_obj.get("key_reasons") or []).lower()
+    if not any(term in reasons_blob for term in COVERAGE_LOSS_TERMS):
+        errors.append(
+            f"verdict_cases/{dir_path.name}: sweep.errors is non-empty "
+            f"({sweep_errors!r}) but expected.key_reasons never acknowledges the "
+            f"coverage loss (expected a term like {COVERAGE_LOSS_TERMS!r})"
+        )
+
+
+# A candidate with license: null is an unresolved rights question, not a
+# silent non-issue (docs/design.md's rights-and-policy dimension: "unknown"
+# is distinct from "permitted"). If the fixture's own candidates include one,
+# the reasoning must say so somewhere -- otherwise the fixture models a
+# verdict that quietly ignores a licensing gap.
+def check_null_license_candidates_are_acknowledged(dir_path, input_obj, expected_obj, errors):
+    candidates = (input_obj.get("sweep") or {}).get("candidates")
+    if not isinstance(candidates, list):
+        return
+    has_null_license = any(
+        isinstance(c, dict) and "license" in c and c.get("license") is None
+        for c in candidates
+    )
+    if not has_null_license:
+        return
+    reasons_blob = " ".join(expected_obj.get("key_reasons") or []).lower()
+    if "license" not in reasons_blob:
+        errors.append(
+            f"verdict_cases/{dir_path.name}: a candidate has license: null but "
+            f"expected.key_reasons never mentions 'license'"
+        )
 
 
 # ------------------------------------------------------------------ offline ---
