@@ -70,12 +70,19 @@ usable without them; each WARN line names its install command.
 A hunt already run for this problem is never re-run — only re-validated if stale.
 
 ```
-grep -i -- "<keyword-from-the-ask>" data/decisions-registry.jsonl 2>/dev/null
+grep -iF -e "<keyword-1-from-the-ask>" -e "<keyword-2-from-the-ask>" data/decisions-registry.jsonl 2>/dev/null | head -n 20
 ```
 
-Match on keywords from the current ask, not the literal field name `"problem"` — every line
-carries that key, so matching on it just re-dumps the whole file instead of finding the one
-relevant entry. If a matching entry exists and its `review_by` date hasn't passed, cite it and stop — do not
+Match literally (`-F`), not as a regex, on keywords from the current ask — not the literal field
+name `"problem"`, which every line carries and which just re-dumps the whole file instead of
+finding the one relevant entry. A regex pattern containing an ask's own characters (e.g. `[`)
+can fail with exit status 2, and with `2>/dev/null` that failure is silent: the workflow reads
+"no output" as "no match" and re-hunts something already recorded, so match literally instead.
+Pass one `-e` per distinct keyword from the ask, not just the first word, so a differently-phrased
+but plausible existing entry still surfaces. Cap review at the first 20 hits — this bound exists
+to stop one overly generic keyword from reprinting the whole registry, not to hide a genuine
+match; hitting the cap is a signal to add a more specific keyword, not to assume nothing past it
+exists. If a matching entry exists and its `review_by` date hasn't passed, cite it and stop — do not
 re-hunt. If stale, first re-check framing: has the ecosystem or the problem statement itself
 shifted since the recorded hunt (new constraints, a materially different query, a changed
 tier)? If yes, treat it as a new hunt and start over from stage 0. Only when framing still
@@ -97,6 +104,11 @@ summary; edit the matrix first and keep this in sync, never the other way around
 | **Standard** | Module or notable dependency | github, registry, grep, scorecard | curation, github_code_reading, architecture_qa, freshness, skills_ecosystem, general_web | + snowball 1 hop, license check: `python3 "$SKILL_DIR/scripts/sweep.py" --query "<keywords>" --lanes github,registry,grep,scorecard --limit 10` |
 | **Full** | Subsystem, framework, or hard-to-reverse choice | github, registry, grep, scorecard, hands_on_probe, provenance, freshness | curation, github_code_reading, architecture_qa, skills_ecosystem, general_web | sweep as above, then fetch each shortlisted maintainer's raw GitHub data and run `python3 "$SKILL_DIR/scripts/provenance.py" --input <owners.json> --now <UTC-timestamp>` (see `references/judge.md` §6b) |
 
+Concept hunts (no code to sweep — design/architecture/standards questions) substitute
+`standards_bodies`, `framework_docs`, and `academic_survey` for `curation`/`skills_ecosystem` at
+every tier (`policy/tier-matrix.json`'s `concept_hunt_policy`); the required-lane column above is
+unaffected.
+
 Deterministic-first: scripts sweep, fetch, and score — JSON out, never a composite number.
 The LLM spends judgment only where judgment is needed: framing, probing, the rubric, the verdict.
 
@@ -109,7 +121,7 @@ Each stage is derived from a specific failure mode (`$SKILL_DIR/docs/design.md` 
 | 0 | **Re-problem** | Restate with zero solution vocabulary; five whys; check null solutions (do nothing / delete the requirement). Can end here: `NOT-A-PROBLEM` or `DIFFERENT-PROBLEM`. Underspecified ask → clarify directly, or hand off to `agent-skills:interview-me` when that skill is installed (optional, not required). | `$SKILL_DIR/references/re-problem.md` |
 | 1 | **Trigger** | Already done if you're reading this — the description fired. Confirm tier (above) and registry (step 0). | inline, above |
 | 2 | **Framing** | Restate the problem in 2–3 vocabularies a *different community* would use; write exclusion criteria **before** seeing any candidate. | `$SKILL_DIR/references/framing.md` |
-| 3 | **Sweep** | Run `$SKILL_DIR/scripts/sweep.py` per the tier's invocation. Dispatch remaining lanes (curation, freshness, skills-ecosystem, general web) as blind subagents when the host supports parallel dispatch — otherwise run them sequentially inline; either way, brief each lane only on the framing output, never on another lane's results. | `$SKILL_DIR/references/lanes.md` |
+| 3 | **Sweep** | Run `$SKILL_DIR/scripts/sweep.py` per the tier's invocation, then only that tier's optional lanes (table above; concept hunts substitute the concept lanes noted there) as blind subagents when the host supports parallel dispatch — otherwise sequentially inline under the degraded-independence contract (`references/lanes.md` §Sequential lane execution). Brief each lane only on the framing output, never on another lane's results. | `$SKILL_DIR/references/lanes.md` |
 | 4 | **Snowball** | From every strong hit, chase 2–3 hops backward (deps, stated inspirations, what it forked) and forward (who depends on it, who forked it). Standard tier: 1 hop. | `$SKILL_DIR/references/snowball-probe.md` |
 | 5 | **Probe** | READMEs undersell, and cloned code is untrusted until reviewed. Clone the top 1–2 shortlisted candidates shallow; read install/setup scripts and manifests before running them; if an enforceable disposable sandbox (container/VM/OS sandbox) with no access to secrets, credentials, or the working repo is available, install and smoke-test inside it, then read the load-bearing source. If no such sandbox is available, read the source statically and mark `hands_on_probe` unsupported instead of executing. Full tier only (or stale re-validation). See "Trust boundary" below. | `$SKILL_DIR/references/snowball-probe.md` |
 | 6 | **Judge** | Score only the dimensions declared up front (QSOS): competency test, innovation-token cost, health (`python3 "$SKILL_DIR/scripts/provenance.py" --input <owners.json> --now <UTC-timestamp>` for maintainer signal, given fetched raw GitHub data, + Scorecard from the sweep output), license bucket (flag AGPL/SSPL/no-LICENSE explicitly), fence check, reversibility. Stars are the weakest signal — never rank on them. Record confidence explicitly: name every evidence gap, degraded lane (any sweep/doctor `WARN`), and unresolved ambiguity — these carry into the gate and the record, never silently dropped. | `$SKILL_DIR/references/judge.md` |
