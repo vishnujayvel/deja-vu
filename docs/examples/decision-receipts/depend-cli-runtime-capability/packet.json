@@ -1,0 +1,58 @@
+{
+  "schema_version": "deja-vu.decision-packet/v1",
+  "packet_id": "exemplar-depend-cli-runtime-capability",
+  "stage": "proposed",
+  "problem_disposition": {
+    "need_disposition": "resolved",
+    "summary": "evals/run_evals.py's --live mode needs to detect, per trigger-case prompt, whether the deja-vu skill actually fired inside a headless Claude Code run, without deja-vu building and maintaining a custom log-scraping or reply-text-classification harness."
+  },
+  "candidate_comparisons": [
+    {
+      "candidate_id": "claude-code-stream-json-output",
+      "prior_art_kind": "service",
+      "summary": "Claude Code's `--output-format stream-json` flag (documented at https://code.claude.com/docs/en/cli-usage) is a CLI/runtime capability of the agent host, not a capability of the underlying language model itself -- an earlier draft of this entry mislabeled it as a \"model capability\"; corrected here. It emits a structured JSON event stream for a headless `claude -p` run, which evals/run_evals.py's skill_invoked_in_stream()/_event_has_deja_vu_skill() functions parse looking for a Skill/skill tool_use event naming deja-vu, instead of classifying free text.",
+      "evidence_refs": [
+        "https://code.claude.com/docs/en/cli-usage -- --output-format flag, stream-json value, verified 2026-09-11",
+        "evals/run_evals.py lines 341-426 (claude_supports_stream_json, skill_invoked_in_stream, _event_has_deja_vu_skill, detect_fired), read directly 2026-09-11",
+        "evals/run_evals.py module docstring, --live mode description"
+      ]
+    },
+    {
+      "candidate_id": "reply-text-grep-fallback",
+      "prior_art_kind": "pattern",
+      "summary": "Grepping the plain-text reply for the string \"deja-vu\" (detect_fired's text-grep branch) as a fallback, selected only when claude_supports_stream_json() finds no \"stream-json\" substring in `claude --help` output -- not selected on a runtime failure of an actual stream-json run. Weaker signal -- a reply could mention deja-vu without the skill actually having fired, or vice versa -- kept only as a degrade path, not the primary detector.",
+      "evidence_refs": [
+        "evals/run_evals.py lines 341-351 (claude_supports_stream_json) and line 455-456 (use_stream/detection_mode selection), read directly 2026-09-11"
+      ]
+    }
+  ],
+  "uncertainty": {
+    "residual": "this corpus entry read evals/run_evals.py's source and the official Claude Code CLI docs; it did not perform a live headless run to confirm skill_invoked_in_stream() actually detects a real deja-vu Skill tool_use event, and no test in tests/ exercises skill_invoked_in_stream, detect_fired, or claude_supports_stream_json (checked 2026-09-11: no matches). The event schema stream-json emits is an external, unversioned surface Claude Code's own release cadence controls, not deja-vu's, and the module docstring itself flags --live results as directional (\"may differ from interactive ones\"), not authoritative.",
+    "confidence": "moderate -- the CLI flag and its documented purpose are confirmed against official docs and the exact source lines that use it, but the detector's actual accuracy against a real run is unverified by this corpus entry, and the whole --live mode is explicitly experimental and excluded from CI"
+  },
+  "reversibility": "high -- --live is an optional, non-CI mode; reverting to the reply-text-grep fallback (or dropping --live entirely) touches nothing outside evals/run_evals.py",
+  "approval_material_sha256": "9a6c4bbd0573c72445d659993e3e62b9bd11950c11eb66879702fc0716d9b7f5",
+  "route_components": [
+    {
+      "component_id": "live-eval-skill-fire-detector",
+      "route": "depend",
+      "output_boundary": "evals/run_evals.py --live mode: a boolean (fired/silent) per trigger case, derived from the headless session's output stream",
+      "candidate_ref": "claude-code-stream-json-output",
+      "evidence_refs": [
+        "https://code.claude.com/docs/en/cli-usage",
+        "evals/run_evals.py lines 341-426"
+      ],
+      "fit": "composable",
+      "rights": "permitted",
+      "evidence_level": "source-inspected",
+      "custom_behavior": false,
+      "policy_clauses": [],
+      "authority": "agent-authorized",
+      "accepted_obligations": [
+        "keep the reply-text-grep fallback maintained so detection degrades instead of failing hard when stream-json is unsupported"
+      ],
+      "residual_uncertainty": "no live run was performed to confirm detection accuracy; stream-json's event schema is an external, unversioned surface that can change under a Claude Code upgrade; no test coverage exists for the detection functions themselves",
+      "next_action": "add unit tests for skill_invoked_in_stream/_event_has_deja_vu_skill/claude_supports_stream_json against recorded fixture transcripts, and/or run a recorded live probe, before upgrading this entry's evidence_level past source-inspected"
+    }
+  ]
+}

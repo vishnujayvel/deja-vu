@@ -4,40 +4,42 @@
   "stage": "proposed",
   "problem_disposition": {
     "need_disposition": "proceed",
-    "summary": "trelmitt/claude-skills' build-vs-borrow is the closest single prior-art candidate to deja-vu's own pipeline design (8-stage DETECT→…→RECORD, working sweep script, 4-verdict model, SPDX license buckets, ADR template) — but it ships with no LICENSE file, so its code cannot simply be forked or vendored no matter how good the fit is."
+    "summary": "trelmitt/claude-skills' build-vs-borrow is the closest single prior-art candidate to deja-vu's own pipeline design (8-stage DETECT→…→RECORD, working sweep script, 4-verdict model, SPDX license buckets, ADR template) — but no reuse grant was found for it, so its code cannot simply be forked or vendored no matter how good the fit is."
   },
   "candidate_comparisons": [
     {
       "candidate_id": "trelmitt-claude-skills-build-vs-borrow",
       "prior_art_kind": "skill",
-      "summary": "8-stage pipeline, stdlib-only scout script (GitHub+npm+crates+OpenSSF Scorecard), 4-verdict model, SPDX license buckets, ADR template. Verified hands-on: the script runs clean, no keys required. No LICENSE file in the repository — GitHub's own license detector reports none, which under the No-LICENSE trap (references/judge.md) means all rights reserved: readable and learnable-from, not forkable or vendorable.",
+      "summary": "8-stage pipeline, stdlib-only scout script (GitHub+npm+crates+OpenSSF Scorecard), 4-verdict model, SPDX license buckets, ADR template. docs/design.md §6 records that an earlier hunt verified the script runs clean by hand, no keys required. GitHub's automated license detector (Licensee) reports no LICENSE file in the repository. Licensee only matches a specific, known list of license texts and is explicitly not legal advice (https://docs.github.com/en/rest/licenses/licenses). This corpus entry additionally read the repository's root listing and README directly (2026-09-11): no LICENSE file, and no license/rights/copyright mention anywhere in the README text. No explicit all-rights-reserved notice was found either -- the repository is simply silent on rights.",
       "evidence_refs": [
         "https://github.com/trelmitt/claude-skills/tree/main/build-vs-borrow",
-        "gh api repos/trelmitt/claude-skills re-verified 2026-09-11: license null (no LICENSE file detected), pushed_at 2026-07-10T19:34:54Z",
+        "gh api repos/trelmitt/claude-skills re-verified 2026-09-11: license null (no LICENSE file detected by GitHub's Licensee), pushed_at 2026-07-10T19:34:54Z",
+        "gh api repos/trelmitt/claude-skills/contents (root listing) and contents/README.md, read directly 2026-09-11: no LICENSE file present; README contains no license/rights/copyright text",
+        "https://docs.github.com/en/rest/licenses/licenses -- Licensee's matching scope and \"not legal advice\" caveat, verified 2026-09-11",
         "docs/design.md §6 footnote 1",
-        "references/judge.md § License, \"No-LICENSE trap\""
+        "docs/adr/0011-decision-taxonomy-compositional-packet.md -- rights dimension: unknown is the default for a candidate with no discovered license; prohibited requires the hunt to confirm no grant exists via something explicit (e.g. an all-rights-reserved notice or explicitly restrictive terms) -- silence is not that confirmation"
       ]
     }
   ],
   "uncertainty": {
-    "residual": "GitHub's license detector reports null, but that is a heuristic over the repo's file tree, not a legal opinion; a LICENSE file could exist outside the paths the detector scans, or the author could grant rights on request. Neither was chased, since the fallback (clean-room reimplementation of the design, not the code) resolves the need either way.",
-    "confidence": "high — the rights conclusion follows directly from a documented, mechanically-checkable absence (no LICENSE file), not from an inference about intent"
+    "residual": "GitHub's Licensee plus a direct read of the root listing and README both confirm no LICENSE file and no rights language, but neither is a legal opinion, and no explicit all-rights-reserved notice was found -- the repository is silent, not explicit. Per ADR-11, that state is rights: unknown, not rights: prohibited (prohibited needs an explicit confirmation of no grant); an earlier draft of this entry used prohibited, which overstated what was actually confirmed.",
+    "confidence": "moderate -- the absence of any license/rights text is now confirmed by two independent checks (Licensee, direct README read), but classifying it as unknown rather than prohibited (per ADR-11's own rule) means the rights conclusion is deliberately less certain than a confirmed all-rights-reserved notice would support"
   },
-  "reversibility": "high on the rights question itself (if the author later adds a LICENSE, that only widens future options; it does not retroactively legitimize what was already reimplemented clean-room) — low on unwinding the clean-room reimplementation once shipped, same as any custom-build",
-  "approval_material_sha256": "2cc232d1faf754edc0c82563da32558010e32d8cf991dbfb541a3ee8dd5b74d6",
+  "reversibility": "high on the rights question itself (if the author later adds a LICENSE, or an explicit grant/restriction is found on closer reading, that only changes future options; it does not retroactively legitimize what was already reimplemented clean-room) — low on unwinding the clean-room reimplementation once shipped, same as any custom-build",
+  "approval_material_sha256": "b24d713591509378df4dc34287aede0811c9eea0ba78e16f70c72e8aacf8cef9",
   "route_components": [
     {
       "component_id": "pipeline-stage-design",
       "route": "clean-room-reimplement",
-      "output_boundary": "deja-vu's own nine-stage pipeline design (stage names, ordering, and verdict vocabulary), independently reimplemented — no source lines or literal text copied from build-vs-borrow",
+      "output_boundary": "deja-vu's own ten-stage (0-9) pipeline design (stage names, ordering, and verdict vocabulary), independently reimplemented — no source lines or literal text copied from build-vs-borrow",
       "candidate_ref": "trelmitt-claude-skills-build-vs-borrow",
       "evidence_refs": [
         "gh api repos/trelmitt/claude-skills re-verified 2026-09-11: license null",
-        "docs/design.md §6 footnote 1: \"No LICENSE file — all rights reserved — and an anonymous author, so its code was not forked; its designs were treated as a reference and reimplemented\""
+        "docs/design.md §6 footnote 1: \"No LICENSE file — all rights reserved — and an anonymous author, so its code was not forked; its designs were treated as a reference and reimplemented\" (docs/design.md's own characterization; this packet treats the rights dimension per ADR-11's stricter unknown-vs-prohibited distinction rather than repeating that phrase as this packet's own conclusion)"
       ],
       "fit": "partial",
-      "rights": "prohibited",
-      "evidence_level": "operational",
+      "rights": "unknown",
+      "evidence_level": "source-inspected",
       "custom_behavior": true,
       "custom_delta": {
         "ownership": "deja-vu maintainers",
@@ -50,8 +52,8 @@
       "accepted_obligations": [
         "attribute the design lineage explicitly in docs/design.md §6 rather than presenting the pipeline shape as independently invented"
       ],
-      "residual_uncertainty": "whether a LICENSE grant exists outside the scanned file tree, or would be given on request, is unconfirmed and was not pursued",
-      "next_action": "re-check trelmitt/claude-skills for an added LICENSE file if a future decision would benefit from direct reuse rather than clean-room reimplementation; no action needed for already-shipped code"
+      "residual_uncertainty": "the root listing and README were read directly and contain no license/rights text, but whether the author would grant rights on request, or has stated something outside the repository (an org site, a separate policy doc), is unconfirmed; rights stays unknown, not prohibited, absent an explicit all-rights-reserved notice or restrictive terms",
+      "next_action": "none required to keep the current clean-room route (unknown already blocks fork/vendor-source under the schema's rule 4, same as prohibited would); re-check only if a future decision would benefit from direct reuse rather than clean-room reimplementation"
     }
   ]
 }

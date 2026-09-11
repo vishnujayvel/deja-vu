@@ -4,33 +4,32 @@
   "stage": "proposed",
   "problem_disposition": {
     "need_disposition": "unknown",
-    "summary": "TrevorS/dot-claude's github-prior-art skill was cited during deja-vu's own founding hunt as related prior art (\"search GitHub before answering\", no verdict, no scoring). Whether it could ever have been adopted or composed with is now unverifiable at full strength, because its source path was removed from the live repository after it was first cited."
+    "summary": "TrevorS/dot-claude's github-prior-art skill was cited during deja-vu's own founding hunt as related prior art (\"search GitHub before answering\", no verdict, no scoring). Its path at the repository's current HEAD is now absent; whether it could ever have been adopted or composed with is unverified against the live repository, though a hands-on check against the older pinned snapshot remains possible and was not attempted by this corpus entry."
   },
   "candidate_comparisons": [
     {
       "candidate_id": "trevors-dot-claude-github-prior-art",
       "prior_art_kind": "skill",
-      "summary": "At the time of deja-vu's founding hunt, this candidate existed at skills/github-prior-art in TrevorS/dot-claude. Re-verified 2026-09-11: the path no longer exists at the repository's current HEAD (404 on `gh api repos/TrevorS/dot-claude/contents/skills/github-prior-art`), even though the repository itself is still active (pushed 2026-09-10). The original pinned-commit permalink still resolves (HTTP 200) and is what design.md §6 now cites.",
+      "summary": "At the time of deja-vu's founding hunt, this candidate existed at skills/github-prior-art in TrevorS/dot-claude. Re-verified 2026-09-11: that specific path returns 404 at the repository's current HEAD, while the repository itself is still active (pushed 2026-09-10) and its Licensee-detected license is null (no LICENSE file). The original pinned-commit permalink still resolves (HTTP 200) and is what design.md §6 now cites.",
       "evidence_refs": [
         "gh api repos/TrevorS/dot-claude/contents/skills/github-prior-art → 404 Not Found, verified 2026-09-11",
-        "gh api repos/TrevorS/dot-claude → pushed_at 2026-09-10T22:02:40Z (repo itself is active; only this path was removed)",
+        "gh api repos/TrevorS/dot-claude → pushed_at 2026-09-10T22:02:40Z, license null; this confirms the repository is active and unlicensed, not that only this one path was removed -- no broader diff of the repository's history was performed, so the scope and cause of the removal are unknown",
         "curl -o /dev/null -w '%{http_code}' https://github.com/TrevorS/dot-claude/tree/449a215248c52106f1d13d686e4c31debe9952f5/skills/github-prior-art → 200, verified 2026-09-11",
-        "gh api repos/TrevorS/dot-claude — license null (no LICENSE file detected), verified 2026-09-11",
         "docs/design.md §6 footnote 2"
       ]
     }
   ],
   "uncertainty": {
-    "residual": "a hands-on probe (cloning and running the skill) is no longer possible against the live repository; only the pinned-commit permalink snapshot remains inspectable, and that permalink itself is not guaranteed to survive a GitHub history rewrite or repository deletion. Whatever changed the author's mind about keeping this path public is unknown and was not asked.",
-    "confidence": "low on the candidate's current fitness — the original citation never went past a documentation-level read (\"no verdict, no scoring\" per design.md), and the source has since degraded further, from live-browsable to pinned-permalink-only"
+    "residual": "a hands-on probe against the repository's current live HEAD is no longer possible, since the path is gone there. The pinned-commit snapshot is a different matter: it is still clonable/checkoutable at that specific commit, and could in principle be probed there -- this corpus entry did not perform that probe, so the entry stays at evidence_level: documented rather than probed/operational. What else may have changed in the repository besides this one path, and why the author removed it, are both unknown and were not investigated beyond the two checks in the evidence_refs above.",
+    "confidence": "low on the candidate's current fitness against the live repository -- the original citation never went past a documentation-level read (\"no verdict, no scoring\" per design.md), and a probe of even the frozen pinned snapshot has not been attempted by this corpus entry"
   },
-  "reversibility": "not applicable — no route was ever taken on this candidate; the packet exists to record why the evidence trail degraded, not to justify an adoption decision",
-  "approval_material_sha256": "1c64eebfa11904ecb3d53db852e76b479bfeb231feb4741d5424c4ce5b75c5eb",
+  "reversibility": "not applicable — no route was ever taken on this candidate; the packet exists to record why the evidence trail changed, not to justify an adoption decision",
+  "approval_material_sha256": "aaa042a0c842f4ab4f3f485cfc7e52893346e5d0ee7f16956b0d22ac34e2d0e4",
   "route_components": [
     {
       "component_id": "github-search-pattern-reference",
       "route": "none",
-      "output_boundary": "no component of deja-vu was built from or against this candidate; it is recorded solely as a citation whose evidence has degraded since first use",
+      "output_boundary": "no component of deja-vu was built from or against this candidate; it is recorded solely as a citation whose live-repository evidence changed since first use",
       "candidate_ref": "trevors-dot-claude-github-prior-art",
       "evidence_refs": [
         "gh api repos/TrevorS/dot-claude/contents/skills/github-prior-art → 404, verified 2026-09-11",
@@ -45,8 +44,8 @@
       "accepted_obligations": [
         "keep citing the pinned-commit permalink rather than a live-tree link, since the live path is gone"
       ],
-      "residual_uncertainty": "the pinned permalink's own long-term survival is unverified; a future re-check could find it gone too, which would drop this citation's evidence_level further still",
-      "next_action": "if this candidate ever needs re-evaluation, start from the pinned-commit permalink snapshot rather than expecting a live source to still exist"
+      "residual_uncertainty": "whether the pinned-commit snapshot itself is still probeable was not tested; only its HTTP reachability (200) was checked, not a clone/checkout. The pinned permalink's own long-term survival is also unverified -- a future re-check could find it gone too.",
+      "next_action": "if this candidate ever needs re-evaluation, clone the pinned-commit snapshot and probe it directly rather than assuming the live HEAD's absence makes any hands-on evaluation impossible"
     }
   ]
 }

@@ -4,36 +4,39 @@
   "stage": "proposed",
   "problem_disposition": {
     "need_disposition": "resolved",
-    "summary": "deja-vu's Sweep stage needs a lane that answers \"did someone already ship this as an installable agent skill?\" without deja-vu building and maintaining its own skill-discovery index."
+    "summary": "deja-vu's Stage 3 (Sweep) needs a way to answer \"did someone already ship this as an installable agent skill?\" without deja-vu building and maintaining its own skill-discovery index."
   },
   "candidate_comparisons": [
     {
       "candidate_id": "vercel-labs-skills",
       "prior_art_kind": "skill",
-      "summary": "npx skills / vercel-labs/skills is an open, actively maintained CLI and index for discovering installable Claude agent skills. It solves a different, narrower problem than deja-vu (skill discovery, not prior-art verdicts), so it was wired in as a lane rather than treated as a competitor.",
+      "summary": "npx skills / vercel-labs/skills is an open, actively maintained CLI and index for discovering installable Claude agent skills. It solves a different, narrower problem than deja-vu (skill discovery, not prior-art verdicts), so it was adopted as a manual, agent-dispatched lane rather than treated as a competitor for the whole hunt.",
       "evidence_refs": [
         "https://github.com/vercel-labs/skills",
         "gh api repos/vercel-labs/skills verified 2026-09-11: license MIT, stargazers_count 31266, archived false, pushed_at 2026-09-08T17:31:59Z",
         "docs/design.md §6 footnote 3",
-        "references/lanes.md skills-ecosystem row: `npx skills search \"<vocabulary>\"`"
+        "references/lanes.md line 62: \"## Manual/subagent lanes (no script yet -- dispatch as blind parallel briefs)\", skills-ecosystem row",
+        "SKILL.md Stage 3 row: \"Dispatch remaining lanes (curation, freshness, skills-ecosystem, general web) as blind parallel subagents\"",
+        "scripts/sweep.py ALL_LANES = [\"github\", \"registry\", \"grep\", \"scorecard\"] -- skills-ecosystem is not one of them, confirmed 2026-09-11"
       ]
     }
   ],
   "uncertainty": {
-    "residual": "vercel-labs/skills' index freshness and coverage of niche/internal skills is unverified beyond spot checks; a miss there degrades this lane to a false negative, not a false positive, so it is run alongside (not instead of) the general-web lane.",
-    "confidence": "high — MIT license and 30k+-star, actively-pushed repo clear the license and health bars judge.md sets for a commodity dependency"
+    "residual": "this lane has no automated script and depends on an agent correctly running the documented invocation as a manual step each hunt -- a missed or malformed dispatch is a silent gap, not a hard failure. Health-rubric dimensions references/judge.md actually asks for (contributor-absence factor, 90-day activity/release cadence, security-fix cadence, commit concentration, OpenSSF Scorecard) were not gathered for vercel-labs/skills; only license and coarse activity (not archived, recently pushed) were checked. Index freshness/coverage for niche or private-registry skills is also unverified.",
+    "confidence": "moderate -- license (MIT) and non-archived/recently-pushed status are real, checked signals, but judge.md explicitly says stars are the weakest signal and must never be treated as health proof, and this entry does not have the fuller health-rubric receipts (contributor absence, security cadence, Scorecard) that would support high confidence"
   },
-  "reversibility": "high — the lane is one blind-parallel subprocess call (`npx skills search`); dropping vercel-labs/skills only removes one lane's coverage and requires no data migration or API contract change elsewhere in deja-vu",
-  "approval_material_sha256": "ebd5fd00f6b31a694c222a858fdc02e55eeaf2e075533bcf111f4c8bde5224b0",
+  "reversibility": "high -- this is a documented manual lane, not a wired automated call; dropping the recommendation to dispatch it removes one lane's coverage from future hunts and requires no code change or data migration anywhere in deja-vu",
+  "approval_material_sha256": "1da30a81617f074b795b49257a5040c60a2cd376237f40165746fb8ccdb989d8",
   "route_components": [
     {
       "component_id": "skills-ecosystem-lane",
       "route": "depend",
-      "output_boundary": "Stage 3 (Sweep) lane output: a list of matching installable skills for the current hunt's vocabulary, merged into the sweep's candidate list like any other lane",
+      "output_boundary": "Stage 3 (Sweep): a manual, agent-dispatched blind-parallel lane brief (references/lanes.md's \"Manual/subagent lanes\" section) that an agent runs by invoking the documented CLI command and folding the result into the hunt's candidate list -- not a script-automated lane like scripts/sweep.py's github/registry/grep/scorecard lanes",
       "candidate_ref": "vercel-labs-skills",
       "evidence_refs": [
         "https://github.com/vercel-labs/skills",
-        "references/lanes.md skills-ecosystem row"
+        "references/lanes.md skills-ecosystem row and \"Manual/subagent lanes\" heading",
+        "gh api repos/vercel-labs/skills/contents/src/cli.ts verified 2026-09-11: documented command is `npx skills find [query]` (README.md line 139, 159-171); `search` is still accepted as an undocumented alias in source (src/cli.ts lines 333-334, `case 'find': case 'search':`) -- references/lanes.md's `npx skills search \"<vocabulary>\"` currently relies on that alias rather than the documented command"
       ],
       "fit": "composable",
       "rights": "permitted",
@@ -44,10 +47,10 @@
       ],
       "authority": "agent-authorized",
       "accepted_obligations": [
-        "keep the `npx skills search` invocation string in SKILL.md/lanes.md in sync with vercel-labs/skills' current CLI surface"
+        "keep the invocation string in SKILL.md/lanes.md aligned with vercel-labs/skills' current CLI surface -- prefer the documented `find` subcommand over the undocumented `search` alias"
       ],
-      "residual_uncertainty": "index coverage/freshness for narrow or private-registry skills is unverified",
-      "next_action": "none — lane is live; re-verify the CLI invocation still matches vercel-labs/skills' README if a lane failure is ever reported"
+      "residual_uncertainty": "no health-rubric receipts (contributor absence, activity/release/security cadence, commit concentration, Scorecard) were gathered for this candidate; index coverage/freshness for narrow or private-registry skills is unverified; this lane has never been run as part of authoring this corpus entry",
+      "next_action": "update references/lanes.md's invocation string from `npx skills search` to the documented `npx skills find` the next time that file is touched, and gather the missing health-rubric receipts if this dependency is ever escalated beyond a commodity lane"
     }
   ]
 }

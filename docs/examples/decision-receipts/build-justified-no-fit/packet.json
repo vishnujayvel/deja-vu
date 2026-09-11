@@ -4,13 +4,13 @@
   "stage": "proposed",
   "problem_disposition": {
     "need_disposition": "proceed",
-    "summary": "A structured prior-art hunt is needed before custom code gets built: re-problem, blind-parallel multi-source sweep with snowballing, hands-on probing, context-weighted judging, an imperative gate, and a durable record/learn loop. No single found candidate covers the whole loop."
+    "summary": "A structured prior-art hunt is needed before custom code gets built: re-problem, blind-parallel multi-source sweep with snowballing, hands-on probing, context-weighted judging, an imperative gate, and a durable record/learn loop -- deja-vu's own ten stages, numbered 0-9 in docs/design.md. No single found candidate covers the whole loop."
   },
   "candidate_comparisons": [
     {
       "candidate_id": "trelmitt-claude-skills-build-vs-borrow",
       "prior_art_kind": "skill",
-      "summary": "The near-match: an 8-stage pipeline (DETECT→…→VERDICT→RECORD), a working stdlib-only scout script hitting GitHub+npm+crates+OpenSSF Scorecard, a 4-verdict model, SPDX license buckets, an ADR template. Verified hands-on: the script runs clean, no keys required. Covers Trigger strongly and Judge/Record partially; misses Re-problem, Snowball, Probe, and Learn entirely, and the Gate is explicitly advisory rather than imperative.",
+      "summary": "The near-match: an 8-stage pipeline (DETECT→…→VERDICT→RECORD), a working stdlib-only scout script hitting GitHub+npm+crates+OpenSSF Scorecard, a 4-verdict model, SPDX license buckets, an ADR template. docs/design.md §6 records this as verified hands-on: the script runs clean, no keys required. Per the §6 comparison table: strong on Trigger, partial on Framing/Sweep/Judge, full on Record; no marks (❤) on Re-problem, Snowball, Probe, Gate, or Learn.",
       "evidence_refs": [
         "https://github.com/trelmitt/claude-skills/tree/main/build-vs-borrow",
         "docs/design.md §6 comparison table and footnote 1",
@@ -20,7 +20,7 @@
     {
       "candidate_id": "trevors-dot-claude-github-prior-art",
       "prior_art_kind": "skill",
-      "summary": "\"Search GitHub before answering\" — no verdict, no scoring. Thin coverage of Trigger and Sweep only; every other stage is unaddressed.",
+      "summary": "\"Search GitHub before answering\" — no verdict, no scoring. Per the §6 table: vague on Trigger, no marks on every other stage.",
       "evidence_refs": [
         "https://github.com/TrevorS/dot-claude/tree/449a215248c52106f1d13d686e4c31debe9952f5/skills/github-prior-art",
         "docs/design.md §6 comparison table and footnote 2"
@@ -29,7 +29,7 @@
     {
       "candidate_id": "vercel-labs-skills",
       "prior_art_kind": "skill",
-      "summary": "Mature, 31k+-star index for finding installable agent skills — solves a different problem (skill discovery, not prior-art verdicts). Not a competitor for the full loop; wired in separately as a Sweep lane (see the companion depend-skill-reuse exemplar).",
+      "summary": "Mature, 31k+-star index for finding installable agent skills — solves a different problem (skill discovery, not prior-art verdicts). Not scored in the §6 table as a whole-loop candidate at all; not a competitor for the full loop, and adopted separately as a manual Sweep lane (see the companion depend-skill-reuse exemplar).",
       "evidence_refs": [
         "https://github.com/vercel-labs/skills",
         "docs/design.md §6 footnote 3"
@@ -38,7 +38,7 @@
     {
       "candidate_id": "runxhq-runx-prior-art",
       "prior_art_kind": "skill",
-      "summary": "Broader than code (tools, protocols, governance) with confidence-tagged findings, but welded into its own host runtime and not extractable as a standalone loop.",
+      "summary": "Broader than code (tools, protocols, governance) with confidence-tagged findings, but welded into its own host runtime and not extractable as a standalone loop. Per the §6 table: the only candidate with a full mark anywhere (Judge), partial marks on Re-problem/Trigger/Framing, unclear on Sweep/Gate, no mark on Snowball/Probe/Learn.",
       "evidence_refs": [
         "https://github.com/runxhq/runx/tree/main/skills/prior-art",
         "docs/design.md §6 comparison table and footnote 4"
@@ -47,7 +47,7 @@
     {
       "candidate_id": "turacthethinker-essay",
       "prior_art_kind": "research",
-      "summary": "\"Stop Your AI Agent From Building Tools That Already Exist\" — a scan→score→recommend essay with a reuse/adapt/build verdict. Concept only, no implementation to adopt.",
+      "summary": "\"Stop Your AI Agent From Building Tools That Already Exist\" — a scan→score→recommend essay with a reuse/adapt/build verdict. Concept only, no implementation to adopt; not scored against the ten-stage table.",
       "evidence_refs": [
         "https://dev.to/turacthethinker/stop-your-ai-agent-from-building-tools-that-already-exist-6o9",
         "docs/design.md §6 footnote 5"
@@ -55,16 +55,16 @@
     }
   ],
   "uncertainty": {
-    "residual": "five of nine stages (Re-problem, Snowball, Probe, Gate-as-imperative, Learn) had no found prior art to compare against at all, per the design.md §6 comparison table; the sweep that produced this table was not exhaustive, so a fuller-coverage skill that wasn't surfaced by the vocabularies tried cannot be ruled out.",
-    "confidence": "high — the comparison table cites four real candidates plus one essay, none of which covers more than a partial subset of the nine stages, and the gap was itself the basis on which a human approved the build"
+    "residual": "of the ten stages (0-9) in docs/design.md §6's comparison table, five have no candidate scoring a full mark: stages 4 (Snowball), 5 (Probe), and 9 (Learn) show no marks at all across all four scored candidates; stages 0 (Re-problem) and 7 (Gate-as-imperative) get at best a partial or unclear mark from one candidate (runx), never a full one. The sweep that produced this table was not exhaustive -- a fuller-coverage skill that wasn't surfaced by the vocabularies tried cannot be ruled out. This packet does not independently verify that a human actually approved the build; it cites docs/design.md's own statement that one did, without an authority receipt to confirm it (this corpus stays at stage: proposed).",
+    "confidence": "moderate -- the comparison table cites four real, scored candidates plus one essay, and the five-stage gap is real, but the sweep behind that table was not exhaustive and this packet does not independently re-verify each candidate's score; moderate rather than high reflects that residual gap, not doubt about the table's honesty"
   },
-  "reversibility": "low once shipped and adopted — a multi-stage skill with its own schema, scripts, and evals is not a one-line revert; this is exactly why the BUILD verdict required human gating rather than proceeding on agent authority alone",
-  "approval_material_sha256": "713a0c383cdf7f8a2748c0c8686057a1c6bcbbd1d3cf0d4eb9782a5d7a23665c",
+  "reversibility": "low once shipped and adopted — a multi-stage skill with its own schema, scripts, and evals is not a one-line revert; docs/design.md §6 reports this is why the BUILD verdict was human-gated rather than proceeding on agent authority alone (see uncertainty above on what this packet can and cannot independently confirm about that gating)",
+  "approval_material_sha256": "aae38e833690d12e3f561a2e4e7e9b31166cc7e8e2608c5bca7af5eb55f73cd9",
   "route_components": [
     {
       "component_id": "prior-art-hunt-loop",
       "route": "custom-build",
-      "output_boundary": "the full nine-stage deja-vu skill: SKILL.md router, references/*.md per-stage detail, scripts/sweep.py + provenance.py + doctor.py, schemas/decision-packet.schema.json, and the evals/tests suite",
+      "output_boundary": "the full ten-stage (0-9) deja-vu skill: SKILL.md router, references/*.md per-stage detail, scripts/sweep.py + provenance.py + doctor.py, schemas/decision-packet.schema.json, and the evals/tests suite",
       "candidate_ref": null,
       "evidence_refs": [
         "docs/design.md §6 comparison table"
@@ -75,14 +75,14 @@
       "custom_behavior": true,
       "custom_delta": {
         "ownership": "deja-vu maintainers",
-        "maintenance_surface": "the entire nine-stage loop: trigger description, all reference docs, sweep/provenance/doctor scripts, decision-packet schema, and the trigger/verdict eval suite"
+        "maintenance_surface": "the entire ten-stage loop: trigger description, all reference docs, sweep/provenance/doctor scripts, decision-packet schema, and the trigger/verdict eval suite"
       },
       "policy_clauses": [],
       "authority": "human-required",
       "accepted_obligations": [
         "record this hunt's own receipts in docs/design.md §6 so a later re-hunt on \"is there already a prior-art skill\" starts from citation, not from scratch"
       ],
-      "residual_uncertainty": "stages 4 (Snowball), 5 (Probe), 7 (Gate as imperative), and 9 (Learn) had no prior art to build on at all; their designs are the least externally validated parts of the shipped skill",
+      "residual_uncertainty": "stages 0 (Re-problem), 4 (Snowball), 5 (Probe), 7 (Gate as imperative), and 9 (Learn) had no candidate scoring full coverage in the §6 table -- 4, 5, and 9 with no marks at all, 0 and 7 with at best a partial/unclear mark; their designs are the least externally validated parts of the shipped skill. Snowball and Probe are pipeline stages the candidates don't implement, not Stage-3 Sweep lanes that degraded -- this residual is a stage-coverage gap, not a lane-quality gap.",
       "next_action": "none — shipped; re-run this hunt if a new candidate closes the identified stage gaps"
     }
   ]
