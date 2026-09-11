@@ -2,9 +2,14 @@
 
 Lanes, each answering a question no other lane can (the exact per-tier lane set is versioned in
 `$SKILL_DIR/policy/tier-matrix.json`). Run them **blind to each other**: a
-lane that knows what another lane already found starts confirming instead of searching. Brief
-each lane subagent with only the Stage 2 output (vocabularies + exclusion criteria) — never with
-another lane's candidates. Dedup and ranking happen once, after the barrier, in the main thread.
+lane that knows what another lane already found starts confirming instead of searching. When the
+host supports parallel subagent dispatch, brief each lane subagent with only the Stage 2 output
+(vocabularies + exclusion criteria) — never with another lane's candidates — and dedup/rank once,
+after the barrier, in the main thread. When it doesn't, run the lanes sequentially inline under
+the degraded-independence contract in "Sequential lane execution" below instead of skipping them —
+a single thread that already holds one lane's candidates cannot be made blind to them for the
+next, so that mode is a **degraded** approximation of independence, never a truthful substitute
+for parallel blindness, and must be recorded as such.
 
 ## Deterministic lane: `scripts/sweep.py`
 
@@ -59,7 +64,7 @@ failure mode; it is not a substitute for a second vocabulary, it sits beside it.
 | `scorecard` | Is it maintained safely? | OpenSSF Scorecard API (`api.securityscorecards.dev`) — skip with `--no-scorecard` on the Quick tier |
 | `grep` | Does anyone actually *write* this pattern? | `grep.app` regex search over ~1M public repos; backs off gracefully on 429 |
 
-## Manual/subagent lanes (no script yet — dispatch as blind parallel briefs)
+## Manual/subagent lanes (no script yet — dispatch as blind parallel briefs, or run sequentially under the degraded-independence contract below when parallel dispatch is unavailable)
 
 | Lane | Question it answers | Concrete invocation |
 |---|---|---|
@@ -95,3 +100,24 @@ vocabularies and the pre-registered exclusion criteria (Stage 2), and nothing el
 candidates + receipts (the query it ran and what came back) — never a raw page dump. After every
 lane (script + subagents) reports, merge into one candidate list, drop anything that fails an
 exclusion criterion outright, and carry the rest into Stage 4 (Snowball).
+
+## Sequential lane execution (no parallel dispatch)
+
+When the host cannot dispatch parallel subagents, run the remaining lanes one at a time in the
+same thread instead of skipping them — but do not call this "blind": a thread that already holds
+lane A's candidates cannot be made ignorant of them before running lane B, so this mode is a
+**degraded** approximation of independence, not equivalent to true parallel blindness. Record it
+as degraded (Judge stage confidence notes), the same as any other missing-capability lane, never
+silently as full coverage.
+
+Approximate independence with a fixed discipline instead of relying on not remembering:
+
+1. Freeze every lane's query before running any of them, derived only from the Stage 2 framing
+   output — never adjust a later lane's query because an earlier lane already found something.
+2. Write each lane's raw output to its own record immediately as it returns; do not carry a
+   lane's candidates forward in working narration while running the next lane.
+3. Only read the lanes back together once every lane in this round has run — the same
+   post-barrier merge/dedup/exclusion step as the parallel path (`## Dispatch pattern` above).
+
+This bounds cross-contamination to unconscious query drift; it does not license skipping a lane
+because "the answer is probably the same as the last one."
