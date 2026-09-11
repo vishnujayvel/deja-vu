@@ -113,6 +113,45 @@ def test_non_null_license_candidate_never_flags():
     assert errors == []
 
 
+def test_unsupported_required_lane_without_human_authority_is_flagged():
+    input_obj, expected_obj = _packet(
+        sweep_errors=["github: unsupported -- no fallback"],
+        reasons=["build it"],
+    )
+    expected_obj["authority"] = "agent-authorized"
+    errors = []
+    run_evals.check_unsupported_required_lane_requires_human_authority(
+        CASE, input_obj, expected_obj, errors
+    )
+    assert len(errors) == 1
+    assert "human-required" in errors[0]
+
+
+def test_unsupported_required_lane_with_human_authority_passes():
+    input_obj, expected_obj = _packet(
+        sweep_errors=["github: unsupported -- no fallback"],
+        reasons=["coverage is incomplete, halt for a human decision"],
+    )
+    expected_obj["authority"] = "human-required"
+    errors = []
+    run_evals.check_unsupported_required_lane_requires_human_authority(
+        CASE, input_obj, expected_obj, errors
+    )
+    assert errors == []
+
+
+def test_degraded_but_not_unsupported_lane_never_requires_authority_field():
+    input_obj, expected_obj = _packet(
+        sweep_errors=["grep: 429 backoff retries exhausted"],
+        reasons=["adopt the found candidate despite the grep gap"],
+    )
+    errors = []
+    run_evals.check_unsupported_required_lane_requires_human_authority(
+        CASE, input_obj, expected_obj, errors
+    )
+    assert errors == []
+
+
 # ---------------------------------------------------------- validate_verdict_case ---
 
 def test_validate_verdict_case_wires_coverage_checks_end_to_end(tmp_path):
