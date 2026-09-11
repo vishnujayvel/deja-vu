@@ -290,6 +290,7 @@ def validate_verdict_case(dir_path, errors):
 
     check_verdict_acknowledges_sweep_errors(dir_path, input_obj, expected_obj, errors)
     check_null_license_candidates_are_acknowledged(dir_path, input_obj, expected_obj, errors)
+    check_unsupported_required_lane_requires_human_authority(dir_path, input_obj, expected_obj, errors)
 
 
 # A verdict fixture is dishonest, not just schema-valid, if it stays silent
@@ -338,6 +339,30 @@ def check_null_license_candidates_are_acknowledged(dir_path, input_obj, expected
         errors.append(
             f"verdict_cases/{dir_path.name}: a candidate has license: null but "
             f"expected.key_reasons never mentions 'license'"
+        )
+
+
+# policy/tier-matrix.json: an "unsupported" required lane (its exact status
+# vocabulary -- see the github lane's on_unavailable.lane_status) triggers
+# stopping_rules.required_human_decision. A verdict fixture is not allowed to
+# paper over that with a route label alone (any of VALID_VERDICTS reads as a
+# resolved decision to a naive consumer that only checks the 'verdict' field).
+# Reusing schemas/decision-packet.schema.json's own `authority` vocabulary
+# ("human-required") as an additive field makes the "this is not a green
+# light" state a structured fact instead of prose a downstream reader could
+# skip -- no new verdict value, no new schema, no controller.
+def check_unsupported_required_lane_requires_human_authority(dir_path, input_obj, expected_obj, errors):
+    sweep_errors = (input_obj.get("sweep") or {}).get("errors")
+    if not isinstance(sweep_errors, list):
+        return
+    if not any("unsupported" in str(e).lower() for e in sweep_errors):
+        return
+    if expected_obj.get("authority") != "human-required":
+        errors.append(
+            f"verdict_cases/{dir_path.name}: sweep.errors reports an unsupported "
+            f"required lane, so expected.authority must be 'human-required' "
+            f"(schemas/decision-packet.schema.json vocabulary) -- a route label "
+            f"alone is not enough to mark this decision as unresolved"
         )
 
 

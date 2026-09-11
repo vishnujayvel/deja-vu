@@ -58,10 +58,17 @@ Actual output (trimmed to the top hit):
 Source: unauthenticated GitHub REST search API (`scripts/sweep.py`'s
 `github_lane`, no `gh` CLI on this host so it took the API fallback path).
 
-Reading: a real, permissively-licensed (MIT), actively-maintained (pushed
-10 days before this run), popular candidate is findable in one lane call for
-a plausible query. This is the shape a DEPEND verdict should look like
-(compare `evals/verdict_cases/depend-established-library/`).
+Reading: a real candidate is findable in one lane call for a plausible query,
+carrying several adoption-favoring signals at once — a permissive license
+(MIT), a recent push (10 days before this run), and star count. None of these
+individually proves the code is correct or well-maintained; `license: "mit"`
+here is the raw GitHub API metadata field, not a verified confirmation that
+the repository's actual license file matches (a repo can mislabel or omit
+one), and stars/recency are popularity and activity signals, not a
+correctness or security audit. Together they are enough evidence to warrant
+inspecting the candidate further, which is the shape a DEPEND verdict should
+take (compare `evals/verdict_cases/depend-established-library/`) — not a
+substitute for actually reading the license file and the code.
 
 Practical limitation: this is a *lane-script* observation, not a full skill
 run — it shows the `github` lane's raw data quality, not whether a live model
@@ -138,18 +145,30 @@ the real hunt protocol requires alongside `registry`, not instead of it).
 - **Live model behavior.** `evals/run_evals.py --live` shells out to a fresh
   `claude -p` session to check whether the skill actually fires and how a
   model composes a verdict from lane output. It was **not** run in this
-  session: this worktree's `CLAUDE.md` (this repo is a Gas City `deja-vu`
-  polecat worktree) instructs any Claude Code session started here to behave
-  as a Gas City polecat — claim beads, push branches, run the done sequence —
-  which is exactly the kind of confound `--live`'s own docstring warns about
-  ("never run in CI"; here, additionally, never run inside a polecat identity,
-  since a nested session would try to act as a second polecat instead of
-  answering the trigger prompt). Running `--live` safely requires a plain,
-  non-Gas-City checkout with a normal interactive `CLAUDE.md`, exactly as
-  `evals/run_evals.py`'s module docstring already scopes it to "EXPERIMENTAL,
-  costs tokens, NOT run in CI." This is a real, load-bearing operational
-  limitation, not an oversight — it is recorded here so a future session does
-  not assume `--live` is safe to run from inside any Gas City worktree.
+  session, for two concrete reasons rather than blanket caution:
+  1. The development checkout this bead's work happens in carries its own
+     project-level automation instructions (a `CLAUDE.md` that directs any
+     Claude Code session started in it toward unrelated repository-management
+     tasks). Shelling out `--live`'s nested `claude -p` from here would hand
+     that automation to the nested session instead of letting it evaluate the
+     trigger prompt on its own merits — precisely the kind of confound
+     `--live`'s own module docstring already warns about ("never run in CI").
+  2. This skill's globally-installed copy (the path any ordinary session
+     resolves when the skill fires) is a symlink to a separately-managed
+     checkout that carries the *same* kind of project automation instructions
+     — so simply moving to "a different directory" does not by itself produce
+     an isolated environment; a genuinely clean run would need a scratch
+     checkout registered as the active skill source, which means changing the
+     user's global skill configuration. That is a bigger, more invasive change
+     than this bead warrants to unilaterally make for a one-off test.
+
+  Both are concrete, checkable facts about this environment, not an appeal to
+  caution — they are recorded here so a future session does not assume
+  `--live` is safe to run without first confirming neither condition applies.
+  Running it safely needs a scratch checkout with no inherited project
+  `CLAUDE.md`, explicitly registered as the skill source for that session —
+  exactly the isolation `evals/run_evals.py --live`'s docstring already scopes
+  it to ("EXPERIMENTAL, costs tokens, NOT run in CI").
 - **Composite scoring or a resumable controller.** Per the epic's 2026-09-11
   scope correction, this bead validates the shipped skill and scripts as they
   exist, not the superseded decision-packet/authority-gate platform design in

@@ -1,5 +1,6 @@
 {
   "verdict": "BUILD",
+  "authority": "human-required",
   "key_reasons": [
     "github lane status is unsupported (unauthenticated GitHub REST search rate-limited, no gh CLI): a required lane never counts as an empty success",
     "the registry lane completed but found nothing for this multi-word phrase; its PyPI adapter only does an exact-slug lookup, so a real near-match package under a different name would not surface here either",
