@@ -1,0 +1,52 @@
+{
+  "schema_version": "deja-vu.decision-packet/v1",
+  "packet_id": "exemplar-degraded-evidence-source-rot",
+  "stage": "proposed",
+  "problem_disposition": {
+    "need_disposition": "unknown",
+    "summary": "TrevorS/dot-claude's github-prior-art skill was cited during deja-vu's own founding hunt as related prior art (\"search GitHub before answering\", no verdict, no scoring). Whether it could ever have been adopted or composed with is now unverifiable at full strength, because its source path was removed from the live repository after it was first cited."
+  },
+  "candidate_comparisons": [
+    {
+      "candidate_id": "trevors-dot-claude-github-prior-art",
+      "prior_art_kind": "skill",
+      "summary": "At the time of deja-vu's founding hunt, this candidate existed at skills/github-prior-art in TrevorS/dot-claude. Re-verified 2026-09-11: the path no longer exists at the repository's current HEAD (404 on `gh api repos/TrevorS/dot-claude/contents/skills/github-prior-art`), even though the repository itself is still active (pushed 2026-09-10). The original pinned-commit permalink still resolves (HTTP 200) and is what design.md §6 now cites.",
+      "evidence_refs": [
+        "gh api repos/TrevorS/dot-claude/contents/skills/github-prior-art → 404 Not Found, verified 2026-09-11",
+        "gh api repos/TrevorS/dot-claude → pushed_at 2026-09-10T22:02:40Z (repo itself is active; only this path was removed)",
+        "curl -o /dev/null -w '%{http_code}' https://github.com/TrevorS/dot-claude/tree/449a215248c52106f1d13d686e4c31debe9952f5/skills/github-prior-art → 200, verified 2026-09-11",
+        "gh api repos/TrevorS/dot-claude — license null (no LICENSE file detected), verified 2026-09-11",
+        "docs/design.md §6 footnote 2"
+      ]
+    }
+  ],
+  "uncertainty": {
+    "residual": "a hands-on probe (cloning and running the skill) is no longer possible against the live repository; only the pinned-commit permalink snapshot remains inspectable, and that permalink itself is not guaranteed to survive a GitHub history rewrite or repository deletion. Whatever changed the author's mind about keeping this path public is unknown and was not asked.",
+    "confidence": "low on the candidate's current fitness — the original citation never went past a documentation-level read (\"no verdict, no scoring\" per design.md), and the source has since degraded further, from live-browsable to pinned-permalink-only"
+  },
+  "reversibility": "not applicable — no route was ever taken on this candidate; the packet exists to record why the evidence trail degraded, not to justify an adoption decision",
+  "approval_material_sha256": "1c64eebfa11904ecb3d53db852e76b479bfeb231feb4741d5424c4ce5b75c5eb",
+  "route_components": [
+    {
+      "component_id": "github-search-pattern-reference",
+      "route": "none",
+      "output_boundary": "no component of deja-vu was built from or against this candidate; it is recorded solely as a citation whose evidence has degraded since first use",
+      "candidate_ref": "trevors-dot-claude-github-prior-art",
+      "evidence_refs": [
+        "gh api repos/TrevorS/dot-claude/contents/skills/github-prior-art → 404, verified 2026-09-11",
+        "docs/design.md §6 footnote 2"
+      ],
+      "fit": "unverified",
+      "rights": "unknown",
+      "evidence_level": "documented",
+      "custom_behavior": false,
+      "policy_clauses": [],
+      "authority": "agent-authorized",
+      "accepted_obligations": [
+        "keep citing the pinned-commit permalink rather than a live-tree link, since the live path is gone"
+      ],
+      "residual_uncertainty": "the pinned permalink's own long-term survival is unverified; a future re-check could find it gone too, which would drop this citation's evidence_level further still",
+      "next_action": "if this candidate ever needs re-evaluation, start from the pinned-commit permalink snapshot rather than expecting a live source to still exist"
+    }
+  ]
+}

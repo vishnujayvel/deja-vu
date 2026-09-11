@@ -1,0 +1,96 @@
+{
+  "schema_version": "deja-vu.decision-packet/v1",
+  "packet_id": "exemplar-decision-changed-registry-to-packet",
+  "stage": "proposed",
+  "problem_disposition": {
+    "need_disposition": "proceed",
+    "summary": "deja-vu's own decisions registry stored prior-art verdicts as free-form strings. An audit found 31 recorded decisions using 12 distinct verdict strings, several of them composites like \"DEPEND+BUILD\" that pack two different dispositions (reuse part, build part) into one opaque token nothing downstream could route, compare, or validate by machine. This packet is itself a record of an earlier decision (\"free-text verdict strings are enough\") being revisited and changed, not a first-time decision."
+  },
+  "candidate_comparisons": [
+    {
+      "candidate_id": "expanded-verdict-enum",
+      "prior_art_kind": "pattern",
+      "summary": "Expand the six-value verdict enum to cover composites (DEPEND+BUILD, FORK+VENDOR, ...). Rejected: grows without bound as new composite shapes appear, and stays a single string, so nothing stops a new ad hoc composite from reintroducing the same opacity.",
+      "evidence_refs": [
+        "docs/adr/0011-decision-taxonomy-compositional-packet.md Options considered"
+      ]
+    },
+    {
+      "candidate_id": "composite-numeric-score",
+      "prior_art_kind": "pattern",
+      "summary": "One composite numeric or categorical score. Rejected: hides which specific dimension (rights vs. evidence vs. authority) drove the score, isn't queryable per-component, and two packets with the same score can have opposite risk profiles.",
+      "evidence_refs": [
+        "docs/adr/0011-decision-taxonomy-compositional-packet.md Options considered"
+      ]
+    },
+    {
+      "candidate_id": "free-text-with-style-guide",
+      "prior_art_kind": "pattern",
+      "summary": "Keep free text with a style guide. Rejected: non-machine-checkable by construction — the existing 12-string sprawl is the direct result of exactly this approach, which is what triggered the re-hunt.",
+      "evidence_refs": [
+        "docs/adr/0011-decision-taxonomy-compositional-packet.md Options considered and Context"
+      ]
+    },
+    {
+      "candidate_id": "json-schema-draft-2020-12",
+      "prior_art_kind": "standard",
+      "summary": "JSON Schema (draft 2020-12), validated via the `jsonschema` Python library, chosen as the validation engine for the new compositional packet shape rather than hand-rolling a custom validator. This part of the decision did not change — it is the mechanism the winning \"independent dimensions per route component\" option was implemented with.",
+      "evidence_refs": [
+        "schemas/decision-packet.schema.json line 2: \"$schema\": \"https://json-schema.org/draft/2020-12/schema\"",
+        "tests/test_decision_packet_schema.py imports jsonschema and validates against Draft202012Validator",
+        "docs/adr/0011-decision-taxonomy-compositional-packet.md Receipts"
+      ]
+    }
+  ],
+  "uncertainty": {
+    "residual": "migrating existing free-text registry entries to the new packet shape is explicitly future work, not part of this change (ADR-11 Consequences); downstream tooling that reads only the free-text verdict is unaffected for now, so the two representations coexist rather than one fully replacing the other yet.",
+    "confidence": "high on the taxonomy design itself (matches docs/design.md §5.4 exactly, per ADR-11); moderate on migration completeness, since old entries are not yet backfilled"
+  },
+  "reversibility": "high for the schema/tooling itself (additive: VALID_VERDICTS and the six-value verdict field in evals/run_evals.py are untouched) — lower for any downstream consumer that comes to depend on the new packet shape before the free-text migration is finished",
+  "approval_material_sha256": "70ec4a6ae92cdd710515281c12b7075d26d4a5d0e209b7cfaa25e0f90bd5cd97",
+  "route_components": [
+    {
+      "component_id": "compositional-decision-taxonomy",
+      "route": "custom-build",
+      "output_boundary": "schemas/decision-packet.schema.json's nine independent dimensions (need_disposition, prior_art_kind, fit, rights, evidence_level, route, custom_behavior/custom_delta, uncertainty, authority) applied at packet or route-component scope, replacing the prior free-text verdict-only registry format for new records",
+      "candidate_ref": null,
+      "evidence_refs": [
+        "docs/adr/0011-decision-taxonomy-compositional-packet.md",
+        "docs/design.md §5.4"
+      ],
+      "fit": "none",
+      "rights": "permitted",
+      "evidence_level": "operational",
+      "custom_behavior": true,
+      "custom_delta": {
+        "ownership": "deja-vu maintainers",
+        "maintenance_surface": "schemas/decision-packet.schema.json and its five packet-validation rules, plus tests/test_decision_packet_schema.py"
+      },
+      "policy_clauses": [],
+      "authority": "human-required",
+      "accepted_obligations": [
+        "keep VALID_VERDICTS and the free-text verdict field in evals/run_evals.py working unchanged so this is additive, not breaking"
+      ],
+      "residual_uncertainty": "the 31 pre-existing free-text registry entries are not yet backfilled into the new shape",
+      "next_action": "backfill or dual-write existing registry entries into the packet shape is future work, not scheduled as part of this decision"
+    },
+    {
+      "component_id": "packet-validation-engine",
+      "route": "depend",
+      "output_boundary": "schema validation for both schemas/decision-packet.schema.json itself and every packet instance, run in tests/test_decision_packet_schema.py",
+      "candidate_ref": "json-schema-draft-2020-12",
+      "evidence_refs": [
+        "tests/test_decision_packet_schema.py"
+      ],
+      "fit": "exact",
+      "rights": "permitted",
+      "evidence_level": "operational",
+      "custom_behavior": false,
+      "policy_clauses": [],
+      "authority": "agent-authorized",
+      "accepted_obligations": [],
+      "residual_uncertainty": "none",
+      "next_action": "none — running unmodified in the test suite"
+    }
+  ]
+}

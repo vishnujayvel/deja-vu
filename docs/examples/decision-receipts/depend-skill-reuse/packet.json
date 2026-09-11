@@ -1,0 +1,53 @@
+{
+  "schema_version": "deja-vu.decision-packet/v1",
+  "packet_id": "exemplar-depend-skill-reuse",
+  "stage": "proposed",
+  "problem_disposition": {
+    "need_disposition": "resolved",
+    "summary": "deja-vu's Sweep stage needs a lane that answers \"did someone already ship this as an installable agent skill?\" without deja-vu building and maintaining its own skill-discovery index."
+  },
+  "candidate_comparisons": [
+    {
+      "candidate_id": "vercel-labs-skills",
+      "prior_art_kind": "skill",
+      "summary": "npx skills / vercel-labs/skills is an open, actively maintained CLI and index for discovering installable Claude agent skills. It solves a different, narrower problem than deja-vu (skill discovery, not prior-art verdicts), so it was wired in as a lane rather than treated as a competitor.",
+      "evidence_refs": [
+        "https://github.com/vercel-labs/skills",
+        "gh api repos/vercel-labs/skills verified 2026-09-11: license MIT, stargazers_count 31266, archived false, pushed_at 2026-09-08T17:31:59Z",
+        "docs/design.md §6 footnote 3",
+        "references/lanes.md skills-ecosystem row: `npx skills search \"<vocabulary>\"`"
+      ]
+    }
+  ],
+  "uncertainty": {
+    "residual": "vercel-labs/skills' index freshness and coverage of niche/internal skills is unverified beyond spot checks; a miss there degrades this lane to a false negative, not a false positive, so it is run alongside (not instead of) the general-web lane.",
+    "confidence": "high — MIT license and 30k+-star, actively-pushed repo clear the license and health bars judge.md sets for a commodity dependency"
+  },
+  "reversibility": "high — the lane is one blind-parallel subprocess call (`npx skills search`); dropping vercel-labs/skills only removes one lane's coverage and requires no data migration or API contract change elsewhere in deja-vu",
+  "approval_material_sha256": "ebd5fd00f6b31a694c222a858fdc02e55eeaf2e075533bcf111f4c8bde5224b0",
+  "route_components": [
+    {
+      "component_id": "skills-ecosystem-lane",
+      "route": "depend",
+      "output_boundary": "Stage 3 (Sweep) lane output: a list of matching installable skills for the current hunt's vocabulary, merged into the sweep's candidate list like any other lane",
+      "candidate_ref": "vercel-labs-skills",
+      "evidence_refs": [
+        "https://github.com/vercel-labs/skills",
+        "references/lanes.md skills-ecosystem row"
+      ],
+      "fit": "composable",
+      "rights": "permitted",
+      "evidence_level": "documented",
+      "custom_behavior": false,
+      "policy_clauses": [
+        "MIT license permits invocation via its published CLI without redistributing its source"
+      ],
+      "authority": "agent-authorized",
+      "accepted_obligations": [
+        "keep the `npx skills search` invocation string in SKILL.md/lanes.md in sync with vercel-labs/skills' current CLI surface"
+      ],
+      "residual_uncertainty": "index coverage/freshness for narrow or private-registry skills is unverified",
+      "next_action": "none — lane is live; re-verify the CLI invocation still matches vercel-labs/skills' README if a lane failure is ever reported"
+    }
+  ]
+}

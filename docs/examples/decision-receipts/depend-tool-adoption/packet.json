@@ -1,0 +1,77 @@
+{
+  "schema_version": "deja-vu.decision-packet/v1",
+  "packet_id": "exemplar-depend-tool-adoption",
+  "stage": "proposed",
+  "problem_disposition": {
+    "need_disposition": "resolved",
+    "summary": "CI needs to catch dead external links in this repo's Markdown docs before readers do, since a receipts-first repo that links to rotted evidence undermines its own premise. The reflex was to write a small custom checker script; deja-vu ran its own hunt on that reflex first."
+  },
+  "candidate_comparisons": [
+    {
+      "candidate_id": "lycheeverse-lychee",
+      "prior_art_kind": "package",
+      "summary": "async link checker, purpose-built for exactly this problem; official lychee-action wraps it for CI. Apache-2.0. Won on every declared dimension: CI-fit, activity, license, and built-in retry/rate-limit handling.",
+      "evidence_refs": [
+        "https://github.com/lycheeverse/lychee",
+        "gh api repos/lycheeverse/lychee (ADR-1, 2026-07-19): 3,773★, Apache-2.0, pushed 2026-07-14, not archived",
+        "gh api repos/lycheeverse/lychee re-verified 2026-09-11: license Apache-2.0, stargazers_count 3902, archived false, pushed_at 2026-09-08T16:32:45Z",
+        "docs/adr/0001-link-checking-depend-lychee.md"
+      ]
+    },
+    {
+      "candidate_id": "tcort-markdown-link-check",
+      "prior_art_kind": "package",
+      "summary": "Active, ISC-licensed, CI-usable healthy runner-up, but Markdown-only (this repo's link surface isn't) and single-maintainer.",
+      "evidence_refs": [
+        "docs/adr/0001-link-checking-depend-lychee.md: gh api repos/tcort/markdown-link-check → 712★, ISC, pushed 2026-07-01"
+      ]
+    },
+    {
+      "candidate_id": "stevenvachon-broken-link-checker",
+      "prior_art_kind": "package",
+      "summary": "2,074★ but excluded by a dormancy criterion (no push since 2024-01) that was pre-registered before the sweep, not applied after seeing the star count.",
+      "evidence_refs": [
+        "docs/adr/0001-link-checking-depend-lychee.md sweep vocabulary 2 result"
+      ]
+    },
+    {
+      "candidate_id": "custom-script",
+      "prior_art_kind": "null-solution",
+      "summary": "Commodity plumbing (CI link-checking) fails the competency test and carries zero innovation-token justification — the hard parts (retries, rate limits, false-positive management) are exactly what a naive custom script would rediscover the hard way.",
+      "evidence_refs": [
+        "docs/adr/0001-link-checking-depend-lychee.md Decision § fence check"
+      ]
+    }
+  ],
+  "uncertainty": {
+    "residual": "none — quick-tier sweep found a clear category leader on every declared dimension; no evidence gap was carried forward",
+    "confidence": "high"
+  },
+  "reversibility": "high — dropping lychee is deleting one CI step, no data migration or API surface elsewhere depends on it",
+  "approval_material_sha256": "310a65548afa58ce6589d7df34c039b37fdc2df5373cc17b50ac880e3e57e5d7",
+  "route_components": [
+    {
+      "component_id": "ci-link-check-step",
+      "route": "depend",
+      "output_boundary": ".github/workflows/ci.yml link-check job: pass/fail on every Markdown file's external links, using lycheeverse/lychee-action unmodified plus a .lycheeignore for known rate-limited hosts",
+      "candidate_ref": "lycheeverse-lychee",
+      "evidence_refs": [
+        "docs/adr/0001-link-checking-depend-lychee.md",
+        "https://github.com/lycheeverse/lychee-action"
+      ],
+      "fit": "exact",
+      "rights": "permitted",
+      "evidence_level": "operational",
+      "custom_behavior": false,
+      "policy_clauses": [
+        "Apache-2.0 permits use via the published GitHub Action without redistributing/modifying lychee's source"
+      ],
+      "authority": "agent-authorized",
+      "accepted_obligations": [
+        "maintain .lycheeignore for hosts that are known-rate-limited rather than actually dead"
+      ],
+      "residual_uncertainty": "none",
+      "next_action": "none — running unmodified in CI"
+    }
+  ]
+}
