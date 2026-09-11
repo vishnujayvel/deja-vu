@@ -1,9 +1,10 @@
 {
   "verdict": "BUILD",
+  "authority": "human-required",
   "key_reasons": [
-    "github and registry lanes both completed with zero errors -- full required-lane coverage was achieved, not partial",
-    "zero candidates here is a proven absence, not a search failure: contrast with a degraded or unsupported required lane, where absence of results cannot be claimed",
-    "the numbering scheme encodes proprietary business rules (company-specific PO format and region codes), not commodity plumbing -- no generic library would fit even if one existed",
+    "github and registry (the quick tier's two required lanes) both completed with zero errors -- that is full coverage of this tier's bounded lane set, not partial",
+    "zero candidates is the bounded result these lanes can report, not proof the ecosystem contains nothing: the registry lane's PyPI adapter only does an exact-slug lookup (see the false-negative recorded in evals/observations.md), so a differently-named near-match could still exist unseen",
+    "the numbering scheme encodes proprietary business rules (company-specific PO format and region codes), not commodity plumbing -- no generic library would fit even if a broader search turned one up, which is the decisive reason for BUILD here rather than the empty lane result alone",
     "a BUILD verdict cannot self-approve; it requires human sign-off before any custom code is written"
   ]
 }
