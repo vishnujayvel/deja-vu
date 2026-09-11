@@ -70,10 +70,12 @@ usable without them; each WARN line names its install command.
 A hunt already run for this problem is never re-run — only re-validated if stale.
 
 ```
-grep -l '"problem"' data/decisions-registry.jsonl 2>/dev/null && cat data/decisions-registry.jsonl
+grep -i -- "<keyword-from-the-ask>" data/decisions-registry.jsonl 2>/dev/null
 ```
 
-If a matching entry exists and its `review_by` date hasn't passed, cite it and stop — do not
+Match on keywords from the current ask, not the literal field name `"problem"` — every line
+carries that key, so matching on it just re-dumps the whole file instead of finding the one
+relevant entry. If a matching entry exists and its `review_by` date hasn't passed, cite it and stop — do not
 re-hunt. If stale, first re-check framing: has the ecosystem or the problem statement itself
 shifted since the recorded hunt (new constraints, a materially different query, a changed
 tier)? If yes, treat it as a new hunt and start over from stage 0. Only when framing still
@@ -86,11 +88,14 @@ Estimate build cost, maintenance surface (will this be depended on?), and revers
 expensive is being wrong?) before choosing depth. A flat full-depth hunt on every trigger gets
 this skill disabled within a week — the opposite failure of never searching at all.
 
-| Tier | When | What runs | Invocation |
-|---|---|---|---|
-| **Quick** | Small script, easily reversed | GitHub + registry lanes only | `python3 "$SKILL_DIR/scripts/sweep.py" --query "<keywords>" --lanes github,registry --limit 5 --no-scorecard` |
-| **Standard** | Module or notable dependency | + pattern + health/scorecard, snowball 1 hop, license check | `python3 "$SKILL_DIR/scripts/sweep.py" --query "<keywords>" --lanes github,registry,grep,scorecard --limit 10` |
-| **Full** | Subsystem, framework, or hard-to-reverse choice | all 10 stages: full sweep, snowball, probe, provenance, freshness, full rubric | sweep as above, then fetch each shortlisted maintainer's raw GitHub data and run `python3 "$SKILL_DIR/scripts/provenance.py" --input <owners.json> --now <UTC-timestamp>` (see `references/judge.md` §6b) |
+Canonical values live in `$SKILL_DIR/policy/tier-matrix.json` — the table below is a derived
+summary; edit the matrix first and keep this in sync, never the other way around.
+
+| Tier | When | Required lanes | Optional lanes | Invocation |
+|---|---|---|---|---|
+| **Quick** | Small script, easily reversed | github, registry | curation | `python3 "$SKILL_DIR/scripts/sweep.py" --query "<keywords>" --lanes github,registry --limit 5 --no-scorecard` |
+| **Standard** | Module or notable dependency | github, registry, grep, scorecard | curation, github_code_reading, architecture_qa, freshness, skills_ecosystem, general_web | + snowball 1 hop, license check: `python3 "$SKILL_DIR/scripts/sweep.py" --query "<keywords>" --lanes github,registry,grep,scorecard --limit 10` |
+| **Full** | Subsystem, framework, or hard-to-reverse choice | github, registry, grep, scorecard, hands_on_probe, provenance, freshness | curation, github_code_reading, architecture_qa, skills_ecosystem, general_web | sweep as above, then fetch each shortlisted maintainer's raw GitHub data and run `python3 "$SKILL_DIR/scripts/provenance.py" --input <owners.json> --now <UTC-timestamp>` (see `references/judge.md` §6b) |
 
 Deterministic-first: scripts sweep, fetch, and score — JSON out, never a composite number.
 The LLM spends judgment only where judgment is needed: framing, probing, the rubric, the verdict.
@@ -101,10 +106,10 @@ Each stage is derived from a specific failure mode (`$SKILL_DIR/docs/design.md` 
 
 | # | Stage | One-liner | Detail |
 |---|-------|-----------|--------|
-| 0 | **Re-problem** | Restate with zero solution vocabulary; five whys; check null solutions (do nothing / delete the requirement). Can end here: `NOT-A-PROBLEM` or `DIFFERENT-PROBLEM`. Underspecified ask → hand off to `agent-skills:interview-me`. | `$SKILL_DIR/references/re-problem.md` |
+| 0 | **Re-problem** | Restate with zero solution vocabulary; five whys; check null solutions (do nothing / delete the requirement). Can end here: `NOT-A-PROBLEM` or `DIFFERENT-PROBLEM`. Underspecified ask → clarify directly, or hand off to `agent-skills:interview-me` when that skill is installed (optional, not required). | `$SKILL_DIR/references/re-problem.md` |
 | 1 | **Trigger** | Already done if you're reading this — the description fired. Confirm tier (above) and registry (step 0). | inline, above |
 | 2 | **Framing** | Restate the problem in 2–3 vocabularies a *different community* would use; write exclusion criteria **before** seeing any candidate. | `$SKILL_DIR/references/framing.md` |
-| 3 | **Sweep** | Run `$SKILL_DIR/scripts/sweep.py` per the tier's invocation. Dispatch remaining lanes (curation, freshness, skills-ecosystem, general web) as blind parallel subagents — each briefed only on the framing output, never on another lane's results. | `$SKILL_DIR/references/lanes.md` |
+| 3 | **Sweep** | Run `$SKILL_DIR/scripts/sweep.py` per the tier's invocation. Dispatch remaining lanes (curation, freshness, skills-ecosystem, general web) as blind subagents when the host supports parallel dispatch — otherwise run them sequentially inline; either way, brief each lane only on the framing output, never on another lane's results. | `$SKILL_DIR/references/lanes.md` |
 | 4 | **Snowball** | From every strong hit, chase 2–3 hops backward (deps, stated inspirations, what it forked) and forward (who depends on it, who forked it). Standard tier: 1 hop. | `$SKILL_DIR/references/snowball-probe.md` |
 | 5 | **Probe** | READMEs undersell, and cloned code is untrusted until reviewed. Clone the top 1–2 shortlisted candidates shallow; read install/setup scripts and manifests before running them; if an enforceable disposable sandbox (container/VM/OS sandbox) with no access to secrets, credentials, or the working repo is available, install and smoke-test inside it, then read the load-bearing source. If no such sandbox is available, read the source statically and mark `hands_on_probe` unsupported instead of executing. Full tier only (or stale re-validation). See "Trust boundary" below. | `$SKILL_DIR/references/snowball-probe.md` |
 | 6 | **Judge** | Score only the dimensions declared up front (QSOS): competency test, innovation-token cost, health (`python3 "$SKILL_DIR/scripts/provenance.py" --input <owners.json> --now <UTC-timestamp>` for maintainer signal, given fetched raw GitHub data, + Scorecard from the sweep output), license bucket (flag AGPL/SSPL/no-LICENSE explicitly), fence check, reversibility. Stars are the weakest signal — never rank on them. Record confidence explicitly: name every evidence gap, degraded lane (any sweep/doctor `WARN`), and unresolved ambiguity — these carry into the gate and the record, never silently dropped. | `$SKILL_DIR/references/judge.md` |
