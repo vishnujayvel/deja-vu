@@ -45,11 +45,45 @@ VERDICT_CASES_DIR = ROOT / "evals" / "verdict_cases"
 SKILL_MD_PATH = ROOT / "SKILL.md"
 LANES_MD_PATH = ROOT / "references" / "lanes.md"
 SWEEP_PY_PATH = ROOT / "scripts" / "sweep.py"
+TIER_MATRIX_PATH = ROOT / "policy" / "tier-matrix.json"
 
 VALID_EXPECTED = {"fire", "silent"}
 VALID_VERDICTS = {
     "NOT-A-PROBLEM", "DIFFERENT-PROBLEM", "DEPEND", "FORK", "VENDOR", "BUILD",
 }
+# schemas/decision-packet.schema.json's own enums, reused (not migrated onto)
+# as additive fields on the six-value verdict fixtures — see docs/adr/0011.
+VALID_AUTHORITY = {"agent-authorized", "human-required", "approved", "rejected", "deferred"}
+VALID_RIGHTS_AND_POLICY = {"permitted", "conditional", "prohibited", "unknown"}
+# policy/tier-matrix.json's own stopping_rules keys (the four values under its
+# top-level "stopping_rules" object). Only "required_human_decision" is used
+# as a fixture-level halt marker today — a hunt that stops before Gate never
+# issues one of the six verdicts.
+VALID_STOPPING_RULES = {
+    "sufficient_verified_fit", "exhausted_bounded_coverage",
+    "budget_exhaustion_with_uncertainty", "required_human_decision",
+}
+
+# Matches a "<lane>: <status> -- <detail>" convention used by curated verdict
+# fixtures to name a lane's tier-matrix status explicitly (scripts/sweep.py's
+# own errors[] is free text and never emits this format itself — see
+# _load_tier_matrix's docstring for why fixtures use it anyway).
+LANE_STATUS_RE = re.compile(
+    r"""^(?P<lane>[a-zA-Z0-9_]+):\s*(?P<status>unsupported|degraded|skipped|failed)\b"""
+)
+
+
+def _load_tier_matrix(path=TIER_MATRIX_PATH):
+    """Load policy/tier-matrix.json, the canonical tier/lane policy source.
+
+    Returns None (never raises) if the file is missing or malformed — callers
+    treat that as "cannot validate tier-awareness" and skip rather than crash,
+    matching this project's no-throw script discipline.
+    """
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
 
 # Matches: --lanes github,registry  or  --lanes=github,registry,grep
 LANES_FLAG_RE = re.compile(
@@ -269,11 +303,50 @@ def validate_verdict_case(dir_path, errors):
             if key not in provenance or not isinstance(provenance[key], list):
                 errors.append(f"verdict_cases/{dir_path.name}/input.json: provenance.{key} must be present and a list")
 
-    verdict = expected_obj.get("verdict")
-    if verdict not in VALID_VERDICTS:
+    stopping_rule = expected_obj.get("stopping_rule")
+    has_stopping_rule = "stopping_rule" in expected_obj
+    if has_stopping_rule and stopping_rule not in VALID_STOPPING_RULES:
         errors.append(
-            f"verdict_cases/{dir_path.name}/expected.json: 'verdict' must be one of "
-            f"{sorted(VALID_VERDICTS)}, got {verdict!r}"
+            f"verdict_cases/{dir_path.name}/expected.json: 'stopping_rule' must be one "
+            f"of {sorted(VALID_STOPPING_RULES)}, got {stopping_rule!r}"
+        )
+    if stopping_rule == "required_human_decision":
+        # A hunt halted before Gate for a human decision has not reached any
+        # of the six verdicts yet -- carrying both fields would let a naive
+        # consumer read the verdict as resolved while the prose says it isn't
+        # (exactly the defect this fixture shape replaces).
+        if "verdict" in expected_obj:
+            errors.append(
+                f"verdict_cases/{dir_path.name}/expected.json: stopping_rule is "
+                f"'required_human_decision' (halted before Gate) but 'verdict' is also "
+                f"present ({expected_obj.get('verdict')!r}) -- a halted hunt must not "
+                f"also carry a resolved verdict"
+            )
+        if expected_obj.get("authority") != "human-required":
+            errors.append(
+                f"verdict_cases/{dir_path.name}/expected.json: stopping_rule "
+                f"'required_human_decision' requires authority == 'human-required'"
+            )
+    else:
+        verdict = expected_obj.get("verdict")
+        if verdict not in VALID_VERDICTS:
+            errors.append(
+                f"verdict_cases/{dir_path.name}/expected.json: 'verdict' must be one of "
+                f"{sorted(VALID_VERDICTS)}, got {verdict!r}"
+            )
+
+    authority = expected_obj.get("authority")
+    if "authority" in expected_obj and authority not in VALID_AUTHORITY:
+        errors.append(
+            f"verdict_cases/{dir_path.name}/expected.json: 'authority' must be one of "
+            f"{sorted(VALID_AUTHORITY)}, got {authority!r}"
+        )
+
+    rights_and_policy = expected_obj.get("rights_and_policy")
+    if "rights_and_policy" in expected_obj and rights_and_policy not in VALID_RIGHTS_AND_POLICY:
+        errors.append(
+            f"verdict_cases/{dir_path.name}/expected.json: 'rights_and_policy' must be "
+            f"one of {sorted(VALID_RIGHTS_AND_POLICY)}, got {rights_and_policy!r}"
         )
 
     reasons = expected_obj.get("key_reasons")
@@ -285,6 +358,179 @@ def validate_verdict_case(dir_path, errors):
         errors.append(
             f"verdict_cases/{dir_path.name}/expected.json: 'key_reasons' must be a "
             f"non-empty list of non-empty strings"
+        )
+        return
+
+    check_verdict_acknowledges_sweep_errors(dir_path, input_obj, expected_obj, errors)
+    check_null_license_candidates_are_acknowledged(dir_path, input_obj, expected_obj, errors)
+    check_null_license_rights_and_policy_matches_source(dir_path, input_obj, expected_obj, errors)
+    check_unsupported_required_lane_requires_human_authority(dir_path, input_obj, expected_obj, errors)
+    check_build_verdict_requires_human_authority(dir_path, expected_obj, errors)
+
+
+# A verdict fixture is dishonest, not just schema-valid, if it stays silent
+# about coverage loss. docs/design.md §2.3: "degraded", "failed", "skipped",
+# and "unsupported" are distinct from a proven absence of results -- an empty
+# candidates[] next to a non-empty sweep.errors[] must never read like a
+# clean successful-empty search. This is a keyword check, not a semantic
+# proof: it only guards against a fixture that never mentions the loss at
+# all, the same way check_families_present guards SKILL.md drift.
+COVERAGE_LOSS_TERMS = (
+    "error", "degrad", "unsupported", "coverage", "uncertain", "fail",
+    "incomplete", "residual", "inconclusive",
+)
+
+
+def check_verdict_acknowledges_sweep_errors(dir_path, input_obj, expected_obj, errors):
+    sweep_errors = (input_obj.get("sweep") or {}).get("errors")
+    if not isinstance(sweep_errors, list) or not sweep_errors:
+        return
+    reasons_blob = " ".join(expected_obj.get("key_reasons") or []).lower()
+    if not any(term in reasons_blob for term in COVERAGE_LOSS_TERMS):
+        errors.append(
+            f"verdict_cases/{dir_path.name}: sweep.errors is non-empty "
+            f"({sweep_errors!r}) but expected.key_reasons never acknowledges the "
+            f"coverage loss (expected a term like {COVERAGE_LOSS_TERMS!r})"
+        )
+
+
+# A candidate with license: null is an unresolved rights question, not a
+# silent non-issue (docs/design.md's rights-and-policy dimension: "unknown"
+# is distinct from "permitted"). If the fixture's own candidates include one,
+# the reasoning must say so somewhere -- otherwise the fixture models a
+# verdict that quietly ignores a licensing gap.
+def check_null_license_candidates_are_acknowledged(dir_path, input_obj, expected_obj, errors):
+    candidates = (input_obj.get("sweep") or {}).get("candidates")
+    if not isinstance(candidates, list):
+        return
+    has_null_license = any(
+        isinstance(c, dict) and "license" in c and c.get("license") is None
+        for c in candidates
+    )
+    if not has_null_license:
+        return
+    reasons_blob = " ".join(expected_obj.get("key_reasons") or []).lower()
+    if "license" not in reasons_blob:
+        errors.append(
+            f"verdict_cases/{dir_path.name}: a candidate has license: null but "
+            f"expected.key_reasons never mentions 'license'"
+        )
+
+
+# license: null means two different things depending on which lane produced
+# the candidate, and collapsing them loses a real distinction (docs/design.md's
+# rights-and-policy dimension): a github-sourced candidate's null license is a
+# *confirmed* absence of a LICENSE file (github_lane reads the repo's own
+# license metadata, so null there is a real signal: all rights reserved,
+# rights_and_policy "prohibited"). A registry-sourced candidate's null license
+# (see scripts/sweep.py's _pypi_search, which reads only info.license) is
+# *adapter metadata loss* -- the field came back empty, not evidence the
+# package itself has no license -- rights_and_policy "unknown", not
+# "prohibited". A fixture that only ever writes "license: null" without this
+# distinction lets a reader silently treat an unknown as a confirmed
+# prohibition (over-claiming) or vice versa (under-claiming a real block).
+def check_null_license_rights_and_policy_matches_source(dir_path, input_obj, expected_obj, errors):
+    candidates = (input_obj.get("sweep") or {}).get("candidates")
+    if not isinstance(candidates, list):
+        return
+    null_license_candidates = [
+        c for c in candidates
+        if isinstance(c, dict) and "license" in c and c.get("license") is None
+    ]
+    if not null_license_candidates:
+        return
+    expected_values = {
+        "prohibited" if str(c.get("source_lane", "")).startswith("github") else "unknown"
+        for c in null_license_candidates
+    }
+    rights_and_policy = expected_obj.get("rights_and_policy")
+    if rights_and_policy not in expected_values:
+        errors.append(
+            f"verdict_cases/{dir_path.name}: candidate(s) with license: null imply "
+            f"rights_and_policy in {sorted(expected_values)!r} (github source = "
+            f"confirmed no-LICENSE-file = 'prohibited'; registry source = adapter "
+            f"metadata loss = 'unknown'), but expected.rights_and_policy is "
+            f"{rights_and_policy!r}"
+        )
+
+
+# policy/tier-matrix.json: an "unsupported" required lane (its exact status
+# vocabulary -- see the github lane's on_unavailable.lane_status) triggers
+# stopping_rules.required_human_decision, which halts the hunt before Gate --
+# no verdict is issued at all (validate_verdict_case enforces that "verdict"
+# and "stopping_rule": "required_human_decision" are mutually exclusive).
+# This check cross-references the tier's actual required_lanes list in
+# policy/tier-matrix.json rather than treating every "unsupported" mention as
+# equally blocking: an unsupported *optional* lane narrows coverage but does
+# not, on its own, halt the hunt. Fixtures name a lane's status explicitly
+# via the "<lane>: <status> -- <detail>" convention (LANE_STATUS_RE) because
+# scripts/sweep.py's own errors[] is free text and never emits this
+# vocabulary itself -- see docs/design.md §2.3 for why status still matters
+# even though the script doesn't structure it.
+def check_unsupported_required_lane_requires_human_authority(dir_path, input_obj, expected_obj, errors):
+    sweep_errors = (input_obj.get("sweep") or {}).get("errors")
+    if not isinstance(sweep_errors, list):
+        return
+
+    unsupported_lanes = []
+    for e in sweep_errors:
+        m = LANE_STATUS_RE.match(str(e))
+        if m and m.group("status") == "unsupported":
+            unsupported_lanes.append(m.group("lane"))
+    if not unsupported_lanes:
+        return
+
+    tier = input_obj.get("tier")
+    tier_matrix = _load_tier_matrix()
+    if tier_matrix is None or tier not in (tier_matrix.get("tiers") or {}):
+        # Can't establish requiredness without a known tier + policy file --
+        # fall back to the pre-tier-aware behavior rather than silently
+        # skipping the check (a fixture naming an "unsupported" lane without a
+        # recognized "tier" field is itself a fixture-authoring gap).
+        errors.append(
+            f"verdict_cases/{dir_path.name}: input.json reports unsupported lane(s) "
+            f"{unsupported_lanes!r} but has no valid 'tier' field matching a tier in "
+            f"{TIER_MATRIX_PATH} -- add one so lane requiredness can be checked "
+            f"against policy instead of assumed"
+        )
+        return
+
+    required_lanes = set(tier_matrix["tiers"][tier].get("required_lanes") or [])
+    blocking_lanes = [lane for lane in unsupported_lanes if lane in required_lanes]
+    if not blocking_lanes:
+        return
+
+    if expected_obj.get("authority") != "human-required":
+        errors.append(
+            f"verdict_cases/{dir_path.name}: {blocking_lanes!r} is unsupported and "
+            f"required at tier {tier!r} (policy/tier-matrix.json), so "
+            f"expected.authority must be 'human-required'"
+        )
+    if expected_obj.get("stopping_rule") != "required_human_decision":
+        errors.append(
+            f"verdict_cases/{dir_path.name}: {blocking_lanes!r} is unsupported and "
+            f"required at tier {tier!r}, so expected.stopping_rule must be "
+            f"'required_human_decision' (the hunt halts before Gate; no verdict is "
+            f"issued from this state)"
+        )
+
+
+# SKILL.md's "THE ASYMMETRIC GATE": "A BUILD verdict is the one this skill
+# exists to police, and it can never be self-approved." This holds
+# unconditionally -- unlike DEPEND/FORK/VENDOR, which only need authority when
+# Judge raises a flag, BUILD always needs it. Checking this directly off the
+# verdict value (rather than inferring it from lane status) covers every
+# BUILD fixture, including ones whose route to BUILD has nothing to do with
+# an unsupported lane (e.g. build-no-license-nearmatch, where the trigger is
+# a rights problem, not a coverage gap).
+def check_build_verdict_requires_human_authority(dir_path, expected_obj, errors):
+    if expected_obj.get("verdict") != "BUILD":
+        return
+    if expected_obj.get("authority") != "human-required":
+        errors.append(
+            f"verdict_cases/{dir_path.name}: verdict is 'BUILD', which SKILL.md's "
+            f"asymmetric gate says can never be self-approved, so "
+            f"expected.authority must be 'human-required'"
         )
 
 
