@@ -169,18 +169,3 @@ def test_github_lane_ties_unsupported_to_required_human_decision(matrix):
 
 def test_stopping_rules_vocabulary_has_no_blocked_state(matrix):
     assert "blocked" not in matrix["stopping_rules"]
-
-
-# --- Finding 6: Full tier's probe evidence obligation names a schema that -----
-# --- actually exists on disk (deja-vu-v2.16 receipt gap) ----------------------
-
-
-def test_full_tier_probe_obligation_names_an_existing_schema_file(matrix):
-    obligations = matrix["tiers"]["full"]["evidence_obligations"]
-    probe_obligation = next(
-        (o for o in obligations if "probe receipt" in o), None
-    )
-    assert probe_obligation is not None, obligations
-    assert "schemas/probe-receipt.schema.json" in probe_obligation
-    schema_path = MATRIX_PATH.parent.parent / "schemas" / "probe-receipt.schema.json"
-    assert schema_path.is_file()

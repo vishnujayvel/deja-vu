@@ -66,10 +66,10 @@ weaker/source-only. At Full tier this is not a silent pass: `sandbox_exec` unsup
 hunt cannot reach a verified-fit stopping rule and must stop on `required_human_decision`
 (`$SKILL_DIR/policy/tier-matrix.json`), not report success on source-reading alone.
 
-**Receipt.** Every probe — performed or unsupported — writes one receipt conforming to
-`$SKILL_DIR/schemas/probe-receipt.schema.json` before Judge (Stage 6) runs. A transcript is not
-a receipt: the point is that a skeptical reader can check what actually happened without
-re-running the hunt or trusting memory of it. Minimum required content:
+**Receipt.** Every probe — performed or unsupported — writes one receipt before Judge (Stage 6)
+runs. A transcript is not a receipt: the point is that a skeptical reader can check what
+actually happened without re-running the hunt or trusting memory of it. Minimum required
+content:
 
 - `candidate`, `source_revision` — the pinned commit SHA, tag, or package version actually
   probed, never a moving branch ref. (`source_revision` is `null` only when `hands_on_probe` is
@@ -84,7 +84,6 @@ re-running the hunt or trusting memory of it. Minimum required content:
 
 ```json
 {
-  "schema_version": "deja-vu.probe-receipt/v1",
   "candidate": "example-lib",
   "source_revision": "a1b2c3d4e5f6...",
   "hands_on_probe": "performed",

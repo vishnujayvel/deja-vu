@@ -35,7 +35,6 @@ def make_canonical_sources(root: Path) -> None:
     schemas_dir = root / "schemas"
     schemas_dir.mkdir(parents=True, exist_ok=True)
     (schemas_dir / "decision-packet.schema.json").write_text("{}\n")
-    (schemas_dir / "probe-receipt.schema.json").write_text("{}\n")
 
 
 @pytest.fixture
@@ -58,7 +57,6 @@ def test_sync_regenerates_normally(repo):
     assert (dest / "docs" / "tier-matrix.md").read_text() == "tier-matrix\n"
     assert (dest / "policy" / "tier-matrix.json").read_text() == "{}\n"
     assert (dest / "schemas" / "decision-packet.schema.json").read_text() == "{}\n"
-    assert (dest / "schemas" / "probe-receipt.schema.json").read_text() == "{}\n"
     assert (
         dest / "docs" / "adr" / "0011-decision-taxonomy-compositional-packet.md"
     ).read_text() == "adr-11\n"

@@ -258,7 +258,7 @@
       "license_check_required": true,
       "evidence_obligations": [
         "All Standard-tier evidence obligations, plus:",
-        "The top 1-2 shortlisted candidates each carry a probe receipt conforming to schemas/probe-receipt.schema.json (pinned source_revision, commands, environment, outputs, cleanup when hands_on_probe is performed; unsupported_reason when it is not) and a load-bearing source read before Judge.",
+        "The top 1-2 shortlisted candidates each carry a sandbox install/smoke-test receipt and a load-bearing source read before Judge.",
         "python3 scripts/provenance.py --input <owners.json> --now <UTC-timestamp>, run against caller-fetched raw GitHub data, is recorded for every shortlisted maintainer.",
         "Freshness signal (last30days or WebSearch fallback) is recorded for the winning candidate."
       ],
