@@ -145,24 +145,43 @@ def check_grep_app():
         record("WARN", "grep.app", f"unreachable (status={status}); pattern lane degraded")
 
 
-def check_octocode():
-    """Optional: octocode MCP registered with Claude Code."""
-    cfg = os.path.expanduser("~/.claude.json")
+def _octocode_registered_in_claude():
+    """Claude Code stores MCP server registrations in ~/.claude.json."""
     try:
-        with open(cfg) as f:
+        with open(os.path.expanduser("~/.claude.json")) as f:
             data = json.load(f)
-        servers = data.get("mcpServers", {})
-        if "octocode" in servers:
-            record("PASS", "octocode-mcp", "registered in Claude Code user config")
-            return
+        return "octocode" in data.get("mcpServers", {})
     except Exception:
-        pass
+        return False
+
+
+def _octocode_registered_in_codex():
+    """Codex stores MCP server registrations as [mcp_servers.<name>] tables
+    in ~/.codex/config.toml -- a plain substring check avoids needing a TOML
+    parser (tomllib is 3.11+; this skill supports 3.9+)."""
+    try:
+        with open(os.path.expanduser("~/.codex/config.toml")) as f:
+            text = f.read()
+    except (OSError, UnicodeDecodeError):
+        return False
+    return "[mcp_servers.octocode]" in text
+
+
+def check_octocode():
+    """Optional: octocode MCP registered with Claude Code or Codex."""
+    if _octocode_registered_in_claude():
+        record("PASS", "octocode-mcp", "registered in Claude Code user config")
+        return
+    if _octocode_registered_in_codex():
+        record("PASS", "octocode-mcp", "registered in Codex user config")
+        return
     record(
         "WARN",
         "octocode-mcp",
         "not registered -- optional; install: npm install --global @octocodeai/mcp@18.0.1, then "
-        "claude mcp add-json -s user octocode "
-        "'{\"command\":\"octocode-mcp\",\"type\":\"stdio\",\"args\":[]}'",
+        "register with your host -- Claude Code: claude mcp add-json -s user octocode "
+        "'{\"command\":\"octocode-mcp\",\"type\":\"stdio\",\"args\":[]}'; "
+        "Codex: codex mcp add octocode -- octocode-mcp",
     )
 
 
@@ -187,8 +206,13 @@ def check_skills_cli():
 
 
 def check_last30days():
-    path = os.path.expanduser("~/.claude/skills/last30days/SKILL.md")
-    if os.path.exists(path):
+    """Optional: last30days installed as a skill under Claude Code or Codex --
+    both hosts materialize installed skills at <host-dir>/skills/<name>/SKILL.md."""
+    paths = (
+        os.path.expanduser("~/.claude/skills/last30days/SKILL.md"),
+        os.path.expanduser("~/.codex/skills/last30days/SKILL.md"),
+    )
+    if any(os.path.exists(p) for p in paths):
         record("PASS", "last30days", "installed (freshness lane available)")
     else:
         record(
