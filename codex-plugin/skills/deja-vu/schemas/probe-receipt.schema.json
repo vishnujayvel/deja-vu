@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deja-vu.local/schemas/probe-receipt/v1",
+  "title": "Deja Vu Stage 5 probe receipt",
+  "description": "One receipt per candidate probed at Full tier (references/snowball-probe.md; policy/tier-matrix.json's hands_on_probe lane). Captures enough of the sandboxed run -- or, when no enforceable sandbox exists, the reason none ran -- that a skeptical reader can reproduce the verdict without re-running the hunt or trusting transcript memory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "candidate", "source_revision", "hands_on_probe"],
+  "properties": {
+    "schema_version": {
+      "const": "deja-vu.probe-receipt/v1"
+    },
+    "candidate": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name or URL of the probed candidate."
+    },
+    "source_revision": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "description": "Pinned commit SHA, tag, or package version actually probed -- never a moving branch ref."
+        },
+        { "type": "null" }
+      ],
+      "description": "Null only when hands_on_probe is unsupported and no source was fetched at all."
+    },
+    "hands_on_probe": {
+      "enum": ["performed", "unsupported"]
+    },
+    "inspected_manifests": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Install/setup scripts and lockfile-adjacent manifests read before any execution."
+    },
+    "commands": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Exact install/build/smoke-test commands actually run inside the sandbox."
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sandbox_mechanism": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The enforceable disposable sandbox actually used -- container, VM, or OS-level sandbox mechanism. Never a scratch directory or changed $HOME."
+        },
+        "network": { "enum": ["none", "allowlisted"] },
+        "allowlisted_endpoints": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "mounts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Must stay empty. A non-empty list documents a sandbox violation (secrets, credentials, or the working repo reachable), not a pass."
+        },
+        "writable_scratch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The bounded writable area the sandbox exposed, e.g. its path or size limit."
+        }
+      }
+    },
+    "outputs": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the commands actually returned or produced."
+    },
+    "load_bearing_source_read": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Paths of the load-bearing source read after the sandboxed run."
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["performed"],
+      "properties": {
+        "performed": { "type": "boolean" },
+        "method": { "type": "string", "minLength": 1 }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Any errors or anomalies observed. An empty array records that none occurred; omission does not."
+    },
+    "unsupported_reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Why no enforceable sandbox was available."
+    },
+    "fallback_evidence": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The weaker substitute evidence actually gathered instead, e.g. a static source read or an architecture_qa (DeepWiki) answer."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "hands_on_probe": { "const": "performed" } },
+        "required": ["hands_on_probe"]
+      },
+      "then": {
+        "required": [
+          "source_revision",
+          "commands",
+          "environment",
+          "outputs",
+          "cleanup"
+        ],
+        "properties": {
+          "source_revision": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "hands_on_probe": { "const": "unsupported" } },
+        "required": ["hands_on_probe"]
+      },
+      "then": {
+        "required": ["unsupported_reason"]
+      }
+    }
+  ]
+}
