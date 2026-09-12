@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from scripts import doctor
@@ -65,3 +66,64 @@ def test_main_fails_when_required_skill_file_missing(tmp_path, monkeypatch):
     assert exit_code == 1
     levels = {name: level for level, name, _ in doctor.results}
     assert levels["deja-vu-skill"] == "FAIL"
+
+
+def test_check_octocode_passes_when_registered_in_claude(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".claude.json").write_text(json.dumps({"mcpServers": {"octocode": {}}}))
+    monkeypatch.setattr(doctor, "results", [])
+
+    doctor.check_octocode()
+
+    level, _, detail = doctor.results[0]
+    assert level == "PASS"
+    assert "Claude Code" in detail
+
+
+def test_check_octocode_passes_when_registered_in_codex(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    (codex_dir / "config.toml").write_text("[mcp_servers.octocode]\ncommand = \"octocode-mcp\"\n")
+    monkeypatch.setattr(doctor, "results", [])
+
+    doctor.check_octocode()
+
+    level, _, detail = doctor.results[0]
+    assert level == "PASS"
+    assert "Codex" in detail
+
+
+def test_check_octocode_warns_with_both_hosts_install_commands_when_unregistered(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(doctor, "results", [])
+
+    doctor.check_octocode()
+
+    level, _, detail = doctor.results[0]
+    assert level == "WARN"
+    assert "claude mcp add-json" in detail
+    assert "codex mcp add" in detail
+
+
+def test_check_last30days_passes_when_installed_under_codex(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    skill_dir = tmp_path / ".codex" / "skills" / "last30days"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("placeholder")
+    monkeypatch.setattr(doctor, "results", [])
+
+    doctor.check_last30days()
+
+    level, _, _ = doctor.results[0]
+    assert level == "PASS"
+
+
+def test_check_last30days_warns_when_installed_under_neither_host(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(doctor, "results", [])
+
+    doctor.check_last30days()
+
+    level, _, _ = doctor.results[0]
+    assert level == "WARN"
