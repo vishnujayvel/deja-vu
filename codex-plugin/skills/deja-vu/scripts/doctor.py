@@ -5,11 +5,19 @@ Checks every dependency the skill's source lanes use and prints one
 machine-readable line per check:
 
     DOCTOR: PASS  <check> -- <detail>
-    DOCTOR: WARN  <check> -- <detail>   (optional dep missing/degraded)
+    DOCTOR: WARN  <check> -- <detail>   (optional dep missing/degraded, or an
+                                         always-WARN informational probe --
+                                         see the summary verdict for whether
+                                         any lane is actually degraded)
     DOCTOR: FAIL  <check> -- <detail>   (required dep broken)
 
 Exit code is nonzero only if a REQUIRED check fails. Optional lanes
-degrade to WARN so the skill stays usable without them.
+degrade to WARN so the skill stays usable without them. A few lanes
+(scorecard, grep.app) probe optional third-party services whose
+reachability isn't a local invariant: they always record WARN severity
+regardless of outcome, so the closing "DOCTOR: VERDICT" line only calls
+optional lanes degraded when a probe is actually unreachable -- a fully
+reachable run still ends in a clean READY verdict.
 
 Read-only: never installs anything, never prints secret values
 (presence/absence only).
@@ -45,11 +53,19 @@ REQUIRED_SKILL_FILES = [
     "docs/adr/0011-decision-taxonomy-compositional-packet.md",
 ]
 
-results = []  # (level, name, detail)
+results = []  # (level, name, detail, degraded)
 
 
-def record(level, name, detail):
-    results.append((level, name, detail))
+def record(level, name, detail, degraded=True):
+    """Append a check result.
+
+    `degraded` only matters for WARN: it decides whether this lane counts
+    toward the summary verdict's "some optional lanes degraded" language.
+    It defaults to True (matches every existing WARN lane's meaning) and is
+    set False by lanes whose WARN severity is fixed by design rather than by
+    an actual problem (see _remote_reachability).
+    """
+    results.append((level, name, detail, degraded))
     print(f"DOCTOR: {level:4s}  {name} -- {detail}")
 
 
@@ -127,39 +143,46 @@ def check_github_lane():
 
 
 def _remote_reachability(status):
-    """Classify an optional remote probe's HTTP status into a stable detail string.
+    """Classify an optional remote probe's HTTP status into (message, degraded).
 
     Reachability of a third-party service is not a local invariant -- it
     reflects that service's uptime and rate limits, not this machine's setup.
-    Callers always record WARN for these lanes; only this message varies, so
-    severity stays deterministic across runs on an unchanged machine.
+    Callers always record WARN for these lanes regardless of the outcome, so
+    severity stays deterministic across runs on an unchanged machine. The
+    returned `degraded` flag is only about the summary verdict: a reachable
+    (or rate-limited-but-reachable) probe isn't an actual problem, so it must
+    not make the closing "DOCTOR: VERDICT" line call the lane degraded.
     """
     if status == 200:
-        return "reachable"
+        return "reachable", False
     if status == 429:
-        return "reachable (rate-limited right now; sweep backs off automatically)"
+        return "reachable (rate-limited right now; sweep backs off automatically)", False
     if status is None:
-        return "unavailable (network unreachable)"
-    return f"unavailable (status={status})"
+        return "unavailable (network unreachable)", True
+    return f"unavailable (status={status})", True
 
 
 def check_scorecard():
     status = http_status(
         "https://api.securityscorecards.dev/projects/github.com/ossf/scorecard"
     )
+    message, degraded = _remote_reachability(status)
     record(
         "WARN",
         "scorecard",
-        f"OpenSSF Scorecard API {_remote_reachability(status)}; optional health lane, informational only",
+        f"OpenSSF Scorecard API {message}; optional health lane, informational only",
+        degraded=degraded,
     )
 
 
 def check_grep_app():
     status = http_status("https://grep.app/api/search?q=deja")
+    message, degraded = _remote_reachability(status)
     record(
         "WARN",
         "grep.app",
-        f"grep.app API {_remote_reachability(status)}; optional pattern lane, informational only",
+        f"grep.app API {message}; optional pattern lane, informational only",
+        degraded=degraded,
     )
 
 
@@ -228,6 +251,7 @@ def main():
 
     fails = [r for r in results if r[0] == "FAIL"]
     warns = [r for r in results if r[0] == "WARN"]
+    degraded_warns = [r for r in warns if r[3]]
     print(
         f"DOCTOR: SUMMARY -- {len(results) - len(fails) - len(warns)} pass, "
         f"{len(warns)} warn, {len(fails)} fail"
@@ -235,7 +259,10 @@ def main():
     if fails:
         print("DOCTOR: VERDICT -- NOT READY (required checks failed)")
         return 1
-    print("DOCTOR: VERDICT -- READY" + (" (some optional lanes degraded)" if warns else ""))
+    print(
+        "DOCTOR: VERDICT -- READY"
+        + (" (some optional lanes degraded)" if degraded_warns else "")
+    )
     return 0
 
 
