@@ -1,29 +1,25 @@
 ---
 name: deja-vu
-version: 0.1.1
 description: >-
   Structured prior-art hunt that runs BEFORE anything custom gets built — the "has someone
   already solved this?" reflex, done as a disciplined loop instead of a vague feeling. Fires
   WHENEVER about to scaffold a commodity-ish capability from scratch, even if the user only
-  said "build X": e.g. a rate limiter, auth/SSO flow, parser, job queue or scheduler, cache,
-  retry/backoff logic, diff engine, template engine, config loader, migration runner, event
-  bus, feature-flag system, notification/email pipeline, webhook delivery, search/index
-  layer, state machine, file/CSV/PDF pipeline, dedupe engine, changelog generator, i18n
-  layer (illustrative, not exhaustive). Also fires on: "let's build", "I'll write a
-  script/tool/library that", "we need a", "implement a", "create a subsystem/service for",
-  "is there something that already does X", "has anyone solved X", "don't reinvent the
-  wheel", "should I roll my own or use a library", new-dependency or new-subsystem
-  proposals. Runs proportional-depth (quick/standard/full) across parallel source lanes,
-  snowballs from strong hits, probes shortlisted candidates hands-on, and returns one of six
-  verdicts — NOT-A-PROBLEM, DIFFERENT-PROBLEM, DEPEND, FORK, VENDOR, BUILD — with receipts. A
-  BUILD verdict cannot self-approve; it goes to the human. DO NOT USE FOR trivial edits — typo
-  fixes, renames, one-line config tweaks, formatting, or continuing a build already approved
-  by a prior deja-vu run (check the decisions registry first).
+  said "build X": e.g. a rate limiter, auth/SSO flow, parser, job queue, cache, retry/backoff
+  logic, diff engine, template engine, config loader, migration runner, event bus,
+  feature-flag system, webhook delivery, dedupe engine (illustrative, not exhaustive). Also
+  fires on "let's build", "we need a", "don't reinvent the wheel", or a new-dependency/
+  new-subsystem proposal. Runs a proportional-depth hunt across parallel sources, probes top
+  candidates hands-on, and returns a verdict with receipts — build-from-scratch always
+  requires human sign-off. DO NOT USE FOR trivial edits — typo fixes, renames, one-line
+  config tweaks, formatting, or continuing a build already approved by a prior deja-vu run
+  (check the decisions registry first).
 allowed-tools:
   - Bash
   - Read
   - WebFetch
   - WebSearch
+metadata:
+  version: 0.1.1
 ---
 
 # deja-vu
@@ -127,15 +123,10 @@ or a package manager would otherwise let you do. If a step in this skill seems t
 remote write, stop and hand off to the human instead of performing it.
 
 Probe (stage 5) executes code you do not control. Treat every cloned candidate as hostile until
-reviewed: read install/setup scripts and lockfile-adjacent manifests before running them, and
-only run install and the smoke test inside an *enforceable* disposable sandbox — a container,
-VM, or OS-level sandbox mechanism with no mount of secrets, credentials, or the working
-repository, a bounded writable area, and no outbound network beyond package-registry endpoints
-the install needs. A scratch directory, tempfile, or changed `$HOME` is not isolation and does
-not satisfy this. If no enforceable sandbox is available, do not execute the candidate — read
-its source statically instead and record `hands_on_probe` as unsupported (Full tier then stops
-on `required_human_decision` per `$SKILL_DIR/policy/tier-matrix.json`, not a false pass). Discard the
-sandbox/scratch area when the probe ends.
+reviewed, and only install or run it inside an *enforceable* disposable sandbox with no access
+to secrets, credentials, or the working repository — never a scratch directory or changed
+`$HOME`. Full sandbox protocol and the required no-sandbox fallback:
+`$SKILL_DIR/references/snowball-probe.md`.
 
 ## The six verdicts
 

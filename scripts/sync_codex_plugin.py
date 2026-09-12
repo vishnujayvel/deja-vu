@@ -151,8 +151,16 @@ def _plugin_manifest_paths() -> tuple[Path, Path]:
 
 
 def _skill_version() -> str | None:
-    """Read the `version:` line from canonical SKILL.md's frontmatter."""
-    match = re.search(r"(?m)^version:\s*(\S+)\s*$", (REPO_ROOT / "SKILL.md").read_text())
+    """Read the `metadata.version` line from canonical SKILL.md's frontmatter.
+
+    Lives under `metadata` rather than a bare top-level `version` key because
+    Codex's skill validator rejects unrecognized top-level frontmatter keys.
+    """
+    text = (REPO_ROOT / "SKILL.md").read_text()
+    frontmatter = re.match(r"^---\n(.*?)\n---", text, re.DOTALL)
+    if not frontmatter:
+        return None
+    match = re.search(r"(?m)^\s+version:\s*(\S+)\s*$", frontmatter.group(1))
     return match.group(1) if match else None
 
 

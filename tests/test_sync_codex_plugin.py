@@ -170,7 +170,9 @@ def _write_plugin_manifests(root: Path, version: str) -> None:
 
 def test_check_detects_manifest_version_drift(repo, capsys):
     root, dest = repo
-    (root / "SKILL.md").write_text("---\nname: deja-vu\nversion: 0.1.1\n---\nskill content\n")
+    (root / "SKILL.md").write_text(
+        "---\nname: deja-vu\nmetadata:\n  version: 0.1.1\n---\nskill content\n"
+    )
     _write_plugin_manifests(root, "0.1.1")
 
     assert sync_codex_plugin.sync() == 0
@@ -179,7 +181,9 @@ def test_check_detects_manifest_version_drift(repo, capsys):
     # Bump the skill version without touching the manifests, then regenerate
     # the payload (which copies SKILL.md verbatim, so payload content itself
     # is not stale) -- only the manifest versions should now be flagged.
-    (root / "SKILL.md").write_text("---\nname: deja-vu\nversion: 0.2.0\n---\nskill content\n")
+    (root / "SKILL.md").write_text(
+        "---\nname: deja-vu\nmetadata:\n  version: 0.2.0\n---\nskill content\n"
+    )
     assert sync_codex_plugin.sync() == 0
 
     assert sync_codex_plugin.check() == 1
