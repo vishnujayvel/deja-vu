@@ -66,6 +66,43 @@ weaker/source-only. At Full tier this is not a silent pass: `sandbox_exec` unsup
 hunt cannot reach a verified-fit stopping rule and must stop on `required_human_decision`
 (`$SKILL_DIR/policy/tier-matrix.json`), not report success on source-reading alone.
 
+**Receipt.** Every probe — performed or unsupported — writes one receipt before Judge (Stage 6)
+runs. A transcript is not a receipt: the point is that a skeptical reader can check what
+actually happened without re-running the hunt or trusting memory of it. Minimum required
+content:
+
+- `candidate`, `source_revision` — the pinned commit SHA, tag, or package version actually
+  probed, never a moving branch ref. (`source_revision` is `null` only when `hands_on_probe` is
+  `unsupported` and nothing was even fetched.)
+- `hands_on_probe: performed` — then also `commands` (the exact install/build/smoke-test
+  commands run), `environment` (sandbox mechanism, network policy, mounts — which must stay
+  empty — and the writable scratch area actually granted), `outputs` (what the commands
+  returned), and `cleanup` (whether and how the sandbox/scratch was discarded).
+- `hands_on_probe: unsupported` — then also `unsupported_reason` and, if gathered,
+  `fallback_evidence` (e.g. a static source read or an `architecture_qa` answer).
+- `failures` — an explicit empty array when nothing went wrong; omission is not the same claim.
+
+```json
+{
+  "candidate": "example-lib",
+  "source_revision": "a1b2c3d4e5f6...",
+  "hands_on_probe": "performed",
+  "inspected_manifests": ["package.json", "scripts/install.sh"],
+  "commands": ["npm ci", "node smoke.js"],
+  "environment": {
+    "sandbox_mechanism": "container (no host mounts)",
+    "network": "allowlisted",
+    "allowlisted_endpoints": ["registry.npmjs.org"],
+    "mounts": [],
+    "writable_scratch": "/work/probe-example-lib (500MB)"
+  },
+  "outputs": "npm ci: 42 packages, 0 vulnerabilities. smoke.js: exit 0, printed \"ok\".",
+  "load_bearing_source_read": ["src/index.js", "src/plugin-loader.js"],
+  "cleanup": { "performed": true, "method": "container destroyed after run" },
+  "failures": []
+}
+```
+
 When a sandbox *is* available, still read the source of the load-bearing part — the module that
 would actually be on your call path, not the whole tree — after the sandboxed run. Ask,
 concretely: does it do what the README claims, does it do things the README *doesn't* claim, and
