@@ -162,7 +162,7 @@ def _octocode_registered_in_codex():
     try:
         with open(os.path.expanduser("~/.codex/config.toml")) as f:
             text = f.read()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return False
     return "[mcp_servers.octocode]" in text
 

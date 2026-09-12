@@ -94,6 +94,20 @@ def test_check_octocode_passes_when_registered_in_codex(tmp_path, monkeypatch):
     assert "Codex" in detail
 
 
+def test_check_octocode_warns_when_codex_config_is_not_utf8(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    (codex_dir / "config.toml").write_bytes(b"\xff\xfe\x00invalid")
+    monkeypatch.setattr(doctor, "results", [])
+
+    doctor.check_octocode()
+
+    level, _, detail = doctor.results[0]
+    assert level == "WARN"
+    assert "claude mcp add-json" in detail
+
+
 def test_check_octocode_warns_with_both_hosts_install_commands_when_unregistered(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(doctor, "results", [])
