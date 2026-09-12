@@ -65,3 +65,17 @@ def test_main_fails_when_required_skill_file_missing(tmp_path, monkeypatch):
     assert exit_code == 1
     levels = {name: level for level, name, _ in doctor.results}
     assert levels["deja-vu-skill"] == "FAIL"
+
+
+def test_scorecard_and_grep_app_severity_is_stable_across_network_outcomes(monkeypatch):
+    """Optional remote probes must not flip PASS/WARN with remote availability --
+    only the message may vary (deja-vu-0li)."""
+    for status in (200, 429, 503, None):
+        monkeypatch.setattr(doctor, "http_status", lambda *_a, **_kw: status)
+        monkeypatch.setattr(doctor, "results", [])
+
+        doctor.check_scorecard()
+        doctor.check_grep_app()
+
+        levels = [level for level, _, _ in doctor.results]
+        assert levels == ["WARN", "WARN"], f"status={status} produced {levels}"

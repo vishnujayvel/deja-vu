@@ -126,23 +126,41 @@ def check_github_lane():
         record("WARN", "github-api", f"GitHub API unreachable (status={status}); github lane degraded")
 
 
+def _remote_reachability(status):
+    """Classify an optional remote probe's HTTP status into a stable detail string.
+
+    Reachability of a third-party service is not a local invariant -- it
+    reflects that service's uptime and rate limits, not this machine's setup.
+    Callers always record WARN for these lanes; only this message varies, so
+    severity stays deterministic across runs on an unchanged machine.
+    """
+    if status == 200:
+        return "reachable"
+    if status == 429:
+        return "reachable (rate-limited right now; sweep backs off automatically)"
+    if status is None:
+        return "unavailable (network unreachable)"
+    return f"unavailable (status={status})"
+
+
 def check_scorecard():
     status = http_status(
         "https://api.securityscorecards.dev/projects/github.com/ossf/scorecard"
     )
-    if status == 200:
-        record("PASS", "scorecard", "OpenSSF Scorecard API reachable")
-    else:
-        record("WARN", "scorecard", f"Scorecard API unreachable (status={status}); health lane degraded")
+    record(
+        "WARN",
+        "scorecard",
+        f"OpenSSF Scorecard API {_remote_reachability(status)}; optional health lane, informational only",
+    )
 
 
 def check_grep_app():
     status = http_status("https://grep.app/api/search?q=deja")
-    if status in (200, 429):
-        note = "reachable" if status == 200 else "reachable (rate-limited right now; sweep backs off automatically)"
-        record("PASS", "grep.app", note)
-    else:
-        record("WARN", "grep.app", f"unreachable (status={status}); pattern lane degraded")
+    record(
+        "WARN",
+        "grep.app",
+        f"grep.app API {_remote_reachability(status)}; optional pattern lane, informational only",
+    )
 
 
 def check_octocode():
