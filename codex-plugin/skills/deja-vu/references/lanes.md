@@ -26,11 +26,31 @@ stdout (single JSON object):
   "candidates": [
     {"name": "...", "url": "...", "source_lane": "github", "description": "...",
      "stars": 0, "last_push": "...", "license": "...", "scorecard": {...},
-     "registry_downloads": 0}
+     "registry_downloads": 0, "paths": null},
+    {"name": "...", "url": "https://github.com/owner/repo", "source_lane": "merged",
+     "canonical_repo": "owner/repo", "lanes": ["github", "registry:npm", "grep"],
+     "description": "...", "stars": 0, "last_push": "...", "license": "...",
+     "scorecard": {...}, "registry_downloads": 0, "paths": ["src/x.py"],
+     "observations": ["<the original per-lane candidate objects, unmodified>"],
+     "conflicts": {"description": ["value from lane A", "value from lane B"]}}
   ],
   "errors": []
 }
 ```
+
+`sweep.py` runs one deterministic merge pass after all requested lanes (and scorecard
+enrichment) return: candidates that resolve to the exact same canonical GitHub repository —
+a `github.com/<owner>/<repo>` identity, matched case-insensitively across the `github`,
+`registry`, and `grep` lanes regardless of URL form (`git+https://...`, an SSH remote, a
+trailing `.git`) — collapse into one `source_lane: "merged"` record. That record keeps
+every contributing observation verbatim under `observations` (so lane, original name/url,
+and metadata are never lost), unions `grep` lane `paths` across observations instead of
+keeping only the first match, and lists any field the observations disagree on under
+`conflicts` (e.g. two different license strings). A repo found by only one lane is not a
+duplicate and passes through unchanged, with no `observations`/`conflicts` wrapper. Nothing
+is merged on name alone: two same-named candidates (a package, a service, a standard, a
+research writeup, a pattern, a manual receipt) stay distinct unless they share that exact
+GitHub repository identity.
 
 Run it with the widest `--query` first (one of the Stage 2 vocabularies), then re-run with a
 second vocabulary if the first returns thin results — don't assume one phrasing covers the space.
@@ -95,3 +115,23 @@ vocabularies and the pre-registered exclusion criteria (Stage 2), and nothing el
 candidates + receipts (the query it ran and what came back) — never a raw page dump. After every
 lane (script + subagents) reports, merge into one candidate list, drop anything that fails an
 exclusion criterion outright, and carry the rest into Stage 4 (Snowball).
+
+### Folding manual-lane receipts into `sweep.py`'s candidates
+
+Manual/subagent lanes (GitHub code reading, curation, probe, freshness, skills ecosystem,
+general web, and the concept-hunt lanes) are not part of `sweep.py`'s own merge pass — apply
+the identical rule by hand when folding their receipts into its `candidates` list:
+
+- A manual receipt that cites the exact same `github.com/<owner>/<repo>` a `sweep.py`
+  candidate (or merged group) already has is an additional **observation** on that same
+  candidate, not a new one — append it (lane name, the receipt's original URL/name, and
+  whatever metadata it carried) the way `observations` already does for `github`/`registry`/
+  `grep` hits, and note any value it contradicts (e.g. a curation source disputing an npm
+  description) rather than overwriting.
+- A manual receipt with no exact shared canonical GitHub repository identity — a standard, an
+  RFC, a survey paper, a framework doc, a design pattern, a null-solution finding, or a
+  package/service that merely shares a *name* with something else on the list — stays its own
+  distinct candidate, however similar the name looks. Same-name is never sufficient by itself.
+- When in doubt whether two receipts are the same repository (a redirect, a fork, an
+  organization rename), keep them distinct and note the ambiguity — a false merge destroys
+  the losing side's receipts; a missed merge only costs a duplicate row the judge can dismiss.
