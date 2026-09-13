@@ -16,6 +16,7 @@ __pycache__/
 .beads-credential-key
 .beads/proxieddb/
 data/decisions-registry.jsonl
+data/calibration.jsonl
 
 # Gas City
 .beads/
