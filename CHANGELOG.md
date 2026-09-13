@@ -20,8 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sandbox-protocol restatement (already fully covered in
   `references/snowball-probe.md`'s Stage 5) down to the core invariant plus
   a pointer, removing duplication between always-loaded and progressively-
-  disclosed content. `SKILL.md` drops from 172 to 163 lines, 1881 to 1747
-  words, ~3185 to ~2943 estimated tokens (chars/4), with no change to the
+  disclosed content. `SKILL.md` drops from 171 to 162 lines, 1881 to 1747
+  words, 12,742 to 11,775 Unicode characters (12,820 to 11,849 UTF-8 bytes),
+  ~3,185.5 to ~2,943.75 estimated tokens (chars/4), with no change to the
   six verdicts, the asymmetric BUILD gate, or the trust boundary's actual
   rules.
 

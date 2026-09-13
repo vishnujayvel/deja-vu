@@ -189,3 +189,21 @@ def test_check_detects_manifest_version_drift(repo, capsys):
     assert sync_codex_plugin.check() == 1
     captured = capsys.readouterr()
     assert "version drift" in captured.out
+
+
+def test_skill_version_ignores_version_under_other_parent(repo):
+    root, dest = repo
+    (root / "SKILL.md").write_text(
+        "---\nname: deja-vu\nmetadata:\n  note: x\nother:\n  version: 9.9.9\n---\nskill content\n"
+    )
+
+    assert sync_codex_plugin._skill_version() is None
+
+
+def test_skill_version_missing_metadata_version(repo):
+    root, dest = repo
+    (root / "SKILL.md").write_text(
+        "---\nname: deja-vu\nmetadata:\n  note: x\n---\nskill content\n"
+    )
+
+    assert sync_codex_plugin._skill_version() is None

@@ -160,7 +160,13 @@ def _skill_version() -> str | None:
     frontmatter = re.match(r"^---\n(.*?)\n---", text, re.DOTALL)
     if not frontmatter:
         return None
-    match = re.search(r"(?m)^\s+version:\s*(\S+)\s*$", frontmatter.group(1))
+    # Scope to the top-level `metadata:` mapping specifically -- a bare
+    # `^\s+version:` search would also match a `version:` nested under any
+    # other key (e.g. `other.version`), silently taking the wrong value.
+    metadata_block = re.search(r"(?m)^metadata:\n((?:[ \t]+\S.*\n?)*)", frontmatter.group(1))
+    if not metadata_block:
+        return None
+    match = re.search(r"(?m)^\s+version:\s*(\S+)\s*$", metadata_block.group(1))
     return match.group(1) if match else None
 
 
