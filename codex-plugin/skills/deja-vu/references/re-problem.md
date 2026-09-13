@@ -49,9 +49,11 @@ problem, and what would they call success? Answer in their words, not in library
 ## When to hand off
 
 If the ask is underspecified — no clear "for whom," no clear "why now," a one-line request that
-could mean three different things — this stage is not the place to guess. Hand off to
-`agent-skills:interview-me` (one question at a time until the actual intent is clear) rather than
-inventing a problem statement and hunting for prior art to a fiction.
+could mean three different things — this stage is not the place to guess. Ask the requester
+directly, one question at a time, until the actual intent is clear; if `agent-skills:interview-me`
+is installed on this host, it structures that same one-question-at-a-time exchange, but it is an
+optional convenience, not a required dependency — a host without it still clarifies directly
+rather than inventing a problem statement and hunting for prior art to a fiction.
 
 ## Verdicts issuable here — no searching required
 
