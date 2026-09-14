@@ -77,10 +77,15 @@ deja-vu-marketplace`).
 - **octocode-mcp** — gives the GitHub lane real code search/reading instead of just repo
   metadata. Install the exact pinned version yourself first (no unattended `npx ...@latest` at
   startup — this is an explicit, user-controlled install, not a claim the whole package is
-  audited/safe), then point Claude Code at the installed binary:
+  audited/safe), then point your host at the installed binary:
   ```bash
   npm install --global @octocodeai/mcp@18.0.1
+
+  # Claude Code
   claude mcp add-json octocode --scope user '{"command":"octocode-mcp","type":"stdio","args":[]}'
+
+  # Codex
+  codex mcp add octocode -- octocode-mcp
   ```
 - **last30days** — feeds the freshness lane recent Reddit/X/HN/YouTube signal instead of a plain
   web search. If you already have it installed as a skill, deja-vu picks it up automatically.
