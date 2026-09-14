@@ -1,0 +1,39 @@
+{
+  "problem": "need a token-bucket rate limiter for a job-queue worker pool",
+  "sweep": {
+    "query": "token bucket rate limiter job queue worker pool",
+    "lanes_run": ["github", "grep"],
+    "candidates": [
+      {
+        "name": "openrl/token-bucket-py",
+        "url": "https://github.com/openrl/token-bucket-py",
+        "source_lane": "github",
+        "description": "Token-bucket rate limiter with pluggable backends",
+        "stars": 640,
+        "last_push": "2026-08-20",
+        "license": "MIT",
+        "scorecard": null,
+        "registry_downloads": null
+      }
+    ],
+    "errors": [
+      "grep: 429 backoff retries exhausted against grep.app; lane skipped after 3 attempts"
+    ]
+  },
+  "provenance": {
+    "profiles": [
+      {
+        "login": "openrl-maintainer",
+        "name": "OpenRL Maintainer",
+        "company": null,
+        "created_at": "2021-02-10T00:00:00Z",
+        "followers": 95,
+        "public_repos": 18,
+        "account_age_years": 5.6,
+        "other_notable": [],
+        "signal": "established-practitioner"
+      }
+    ],
+    "errors": []
+  }
+}
