@@ -92,7 +92,8 @@ correlation is guaranteed, so don't assume it.
 | Provenance signal | + Probe says the design is sound | Route |
 |---|---|---|
 | established-practitioner / active-builder, licensed, maintained | → | **DEPEND** or **FORK**: run their code |
-| unknown-experimental, unlicensed, or abandoned | → | **BUILD** as a clean-room reimplementation (`route: clean-room-reimplement` or `custom-build`, `authority: human-required`) — borrow the design, not the artifact |
+| abandoned but permissively licensed (not the no-LICENSE trap above) | → | **VENDOR**: copy it in and amend — you own the copy, license permitting |
+| unknown-experimental, or unlicensed (the no-LICENSE trap above) | → | **BUILD** as a clean-room reimplementation (`route: clean-room-reimplement` or `custom-build`, `authority: human-required`) — borrow the design, not the artifact |
 
 Carry both the rubric scores and the provenance signal into Stage 7 (Gate) — the gate reads the
 receipts this stage produced, it does not re-derive them.
