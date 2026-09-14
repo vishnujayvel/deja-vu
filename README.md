@@ -144,7 +144,7 @@ all of them:
 | Code pattern search (grep.app) | `sweep.py` | Does anyone actually write this pattern, over ~1M public repos? | standard tier and up |
 | Maintainer health ([OpenSSF Scorecard](https://openssf.org/projects/scorecard/)) | `sweep.py` | Is it maintained safely? | standard tier and up |
 | Curation ([LibHunt](https://www.libhunt.com/), awesome-lists) | Agent research | What do humans say the alternatives are? | as needed |
-| Freshness (`last30days`, if installed) | Agent research (optional) | Did something ship in the last 30 days? | full tier |
+| Freshness (`last30days`, if installed) | Agent research (optional) | Did something ship in the last 30 days? | standard tier and up (required at full) |
 | Skills ecosystem (`npx skills search`) | Agent research | Is this already an agent skill? | as needed |
 | General web | Agent research | What do comparisons/reviews say? | as needed |
 

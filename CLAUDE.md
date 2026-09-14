@@ -14,8 +14,12 @@ Skill that runs a structured prior-art hunt before custom code gets built. This 
 - `references/` — one reference doc per stage (framing, judge, lanes, learn, re-problem, record,
   snowball-probe) — the detail `SKILL.md` points to rather than inlines.
 - `scripts/` — stdlib-only Python: `sweep.py` (multi-lane candidate search), `provenance.py`
-  (maintainer signal), `doctor.py` (setup check), plus `sanitize_check.sh` (public-repo hygiene
-  gate).
+  (maintainer signal), `doctor.py` (setup check), `sync_codex_plugin.py` (regenerates
+  `codex-plugin/` from these repo-root sources; run with `--check` to verify sync), plus
+  `sanitize_check.sh` (public-repo hygiene gate).
+- `codex-plugin/` — self-contained Codex plugin package mirroring the shipped skill (kept
+  separate from the repo root so a marketplace install doesn't ship `.git/`, tests, or other
+  dev-only files); `.claude-plugin/marketplace.json` points a local marketplace entry at it.
 - `tests/` — pytest suite; HTTP calls are mocked via recorded fixtures in `tests/fixtures/`.
 - `evals/` — offline schema-validated trigger/verdict fixtures plus an experimental `--live`
   mode.
