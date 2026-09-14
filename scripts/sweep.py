@@ -18,13 +18,28 @@ Output (single JSON object to stdout):
     "lanes_run": [str, ...],
     "candidates": [
       {
-        "name": str, "url": str, "source_lane": str, "description": str|None,
-        "stars": int|None, "last_push": str|None, "license": str|None,
-        "scorecard": {...}|None, "registry_downloads": int|None
+        "name": str, "url": str, "repo_url": str|None, "source_lane": str,
+        "description": str|None, "stars": int|None, "last_push": str|None,
+        "license": str|None, "scorecard": {...}|None,
+        "registry_downloads": int|None, "paths": [str, ...]|None
       }, ...
     ],
     "errors": [str, ...]
   }
+
+"url" is each candidate's own source-page receipt (the page a human would open:
+a GitHub repo, an npm/PyPI/crates.io package page, ...). "repo_url" is set only
+when a lane can additionally identify the canonical GitHub repository behind
+that receipt (registries expose this in their own metadata; for the `github`
+and `grep` lanes the receipt already *is* the repo, so `repo_url` stays None
+there and merge falls back to `url`). merge_candidates() below matches on
+`repo_url` when present, else `url` — never overwriting or discarding either.
+
+candidates that share an exact canonical GitHub repository identity (see
+merge_candidates() below) are collapsed into one record with
+"source_lane": "merged", plus "canonical_repo", "lanes" (contributing lane
+names), "observations" (every original per-lane candidate, unmodified), and
+"conflicts" (fields the observations disagreed on).
 
 No composite score is ever emitted (design.md §5: per-dimension only).
 """
@@ -78,6 +93,7 @@ def empty_candidate(**overrides):
     base = {
         "name": None,
         "url": None,
+        "repo_url": None,
         "source_lane": None,
         "description": None,
         "stars": None,
@@ -85,6 +101,7 @@ def empty_candidate(**overrides):
         "license": None,
         "scorecard": None,
         "registry_downloads": None,
+        "paths": None,
     }
     base.update(overrides)
     return base
@@ -230,6 +247,22 @@ def github_lane(query, language, limit, errors):
 
 # --------------------------------------------------------------- registry ---
 
+def _first_github_url(*value_groups):
+    """First string among `value_groups` (each a value or iterable of values)
+    that looks like it names a GitHub URL, or None.
+
+    A cheap pre-filter only — `_canonical_github_identity` does the real
+    parsing/validation once this reaches merge_candidates(); this just picks
+    which registry-declared link is worth carrying as `repo_url`.
+    """
+    for group in value_groups:
+        values = [group] if isinstance(group, str) or not hasattr(group, "__iter__") else group
+        for value in values:
+            if isinstance(value, str) and "github.com" in value.lower():
+                return value
+    return None
+
+
 def _npm_search(query, limit, errors):
     out = []
     url = f"https://registry.npmjs.org/-/v1/search?text={urllib.parse.quote(query)}&size={limit}"
@@ -240,9 +273,15 @@ def _npm_search(query, limit, errors):
     for obj in _dict_items(_as_dict(data).get("objects"))[:limit]:
         pkg = _as_dict(obj.get("package"))
         links = _as_dict(pkg.get("links"))
+        repo_link = links.get("repository")
         out.append(empty_candidate(
             name=pkg.get("name"),
-            url=links.get("npm") or links.get("repository"),
+            # "url" is the receipt (the npm package page a human would open);
+            # "repo_url" is the registry's own repository metadata, carried
+            # separately so merge_candidates() can match on the canonical
+            # GitHub identity without discarding the npm page.
+            url=links.get("npm") or repo_link,
+            repo_url=repo_link,
             source_lane="registry:npm",
             description=pkg.get("description"),
             last_push=pkg.get("date"),
@@ -272,7 +311,10 @@ def _pypi_search(query, limit, errors):
     info = _as_dict(_as_dict(data).get("info"))
     out.append(empty_candidate(
         name=info.get("name"),
+        # "url" is the receipt (the pypi.org package page); "repo_url" is
+        # pulled from the project's own declared links, when it names one.
         url=info.get("project_url") or info.get("package_url"),
+        repo_url=_first_github_url(_as_dict(info.get("project_urls")).values(), info.get("home_page")),
         source_lane="registry:pypi",
         description=info.get("summary"),
         license=info.get("license") or None,
@@ -290,7 +332,10 @@ def _crates_search(query, limit, errors):
     for c in _dict_items(_as_dict(data).get("crates"))[:limit]:
         out.append(empty_candidate(
             name=c.get("name"),
+            # "url" is the receipt (the crates.io page); "repo_url" is the
+            # crate's own declared repository field, when it names one.
             url=f"https://crates.io/crates/{c.get('name')}" if c.get("name") else None,
+            repo_url=_first_github_url(c.get("repository")),
             source_lane="registry:crates",
             description=c.get("description"),
             last_push=c.get("updated_at"),
@@ -335,22 +380,39 @@ def grep_lane(pattern, language, limit, errors, max_retries=3, base_delay=1, sle
         try:
             data = fetch_json(url, headers=DEFAULT_HEADERS)
             hits = (((data or {}).get("hits") or {}).get("hits")) or []
-            seen = set()
-            candidates = []
+            # Collect every matched path per repo before capping — a repo can
+            # have several hits, and the limit caps distinct *repos*, not
+            # matches; capping mid-scan would silently drop later paths for
+            # repos already accepted.
+            repo_order = []
+            paths_by_repo = {}
             for h in hits:
                 repo = (((h.get("repo") or {}).get("raw")) or "").strip()
-                if not repo or repo in seen:
+                if not repo:
                     continue
-                seen.add(repo)
+                if repo not in paths_by_repo:
+                    repo_order.append(repo)
+                    paths_by_repo[repo] = []
                 path = ((h.get("path") or {}).get("raw")) or ""
+                if path and path not in paths_by_repo[repo]:
+                    paths_by_repo[repo].append(path)
+
+            candidates = []
+            for repo in repo_order[:limit]:
+                paths = paths_by_repo[repo]
+                if len(paths) > 1:
+                    description = f"pattern match in {len(paths)} files: {', '.join(paths)}"
+                elif paths:
+                    description = f"pattern match in {paths[0]}"
+                else:
+                    description = "pattern match"
                 candidates.append(empty_candidate(
                     name=repo,
                     url=f"https://github.com/{urllib.parse.quote(repo, safe='/')}",
                     source_lane="grep",
-                    description=f"pattern match in {path}" if path else "pattern match",
+                    description=description,
+                    paths=paths,
                 ))
-                if len(candidates) >= limit:
-                    break
             return candidates
         except urllib.error.HTTPError as e:
             if e.code == 429 and attempt < max_retries:
@@ -409,6 +471,163 @@ def scorecard_lane(candidates, errors):
     return candidates
 
 
+# ------------------------------------------------------------------ merge ---
+
+# Matches a `git+` prefix some registries (npm) put on repository URLs.
+_GIT_PLUS_PREFIX_RE = re.compile(r"^git\+", re.IGNORECASE)
+# Matches SSH-form GitHub remotes: git@ + github.com + :owner/repo(.git)
+_SSH_GITHUB_RE = re.compile(r"^git@github\.com:(?P<path>.+)$", re.IGNORECASE)
+
+# Fields tracked for cross-observation conflicts when merging. Excludes
+# "source_lane" (each observation's lane is recorded separately) and
+# "paths" (paths are unioned, not treated as a contradiction).
+_CONFLICT_FIELDS = [k for k in empty_candidate().keys() if k not in ("source_lane", "paths")]
+
+
+def _canonical_github_identity(url):
+    """Return the normalized "owner/repo" GitHub identity a URL points at,
+    or None if `url` does not identify an exact GitHub repository.
+
+    Handles the plain https form, a `git+https://...` registry-metadata
+    prefix, an SSH remote (`git@` + `github.com:owner/repo.git`), and a trailing
+    `.git` suffix. Case-insensitive (GitHub repo paths are). Reuses
+    `_is_safe_github_name`'s charset/traversal rules so a hostile or
+    malformed URL degrades to "no identity" rather than a false match.
+    """
+    if not isinstance(url, str) or not url.strip():
+        return None
+    candidate = _GIT_PLUS_PREFIX_RE.sub("", url.strip())
+    ssh_match = _SSH_GITHUB_RE.match(candidate)
+    if ssh_match:
+        candidate = "https://github.com/" + ssh_match.group("path")
+    try:
+        parsed = urllib.parse.urlsplit(candidate)
+    except ValueError:
+        return None
+    host = (parsed.netloc or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if host != "github.com":
+        return None
+    path = parsed.path.strip("/")
+    if path.lower().endswith(".git"):
+        path = path[: -len(".git")]
+    parts = [p for p in path.split("/") if p]
+    if len(parts) < 2:
+        return None
+    owner, repo = parts[0], parts[1]
+    if not _is_safe_github_name(f"{owner}/{repo}"):
+        return None
+    return f"{owner.lower()}/{repo.lower()}"
+
+
+def _dedup_json_values(values):
+    """Distinct non-None values from `values`, first-seen order.
+
+    De-dups by JSON-canonical form so unhashable values (e.g. the
+    `scorecard` dict) can still be compared for equality.
+    """
+    seen = set()
+    out = []
+    for value in values:
+        if value is None:
+            continue
+        key = json.dumps(value, sort_keys=True, default=str)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(value)
+    return out
+
+
+def _merge_group(identity, members):
+    """Collapse `members` (2+ candidates sharing `identity`) into one record
+    that keeps every contributing observation and surfaces field conflicts.
+    """
+    merged = empty_candidate(source_lane="merged", canonical_repo=identity)
+
+    for field in ("name", "url", "repo_url", "description", "stars", "last_push",
+                  "license", "scorecard", "registry_downloads"):
+        for member in members:
+            if member.get(field) is not None:
+                merged[field] = member[field]
+                break
+
+    lanes = []
+    paths = []
+    for member in members:
+        lane = member.get("source_lane")
+        if lane and lane not in lanes:
+            lanes.append(lane)
+        for path in member.get("paths") or []:
+            if path not in paths:
+                paths.append(path)
+
+    merged["lanes"] = lanes
+    merged["paths"] = paths or None
+    merged["observations"] = members
+    merged["conflicts"] = {
+        field: values
+        for field in _CONFLICT_FIELDS
+        for values in [_dedup_json_values(member.get(field) for member in members)]
+        if len(values) > 1
+    }
+    return merged
+
+
+def _merge_identity(candidate):
+    """The canonical GitHub identity to merge `candidate` on: its own
+    registry-declared `repo_url` when the lane found one, else its `url`
+    (already the repo itself for the `github`/`grep` lanes)."""
+    return _canonical_github_identity(candidate.get("repo_url") or candidate.get("url"))
+
+
+def merge_candidates(candidates):
+    """Deterministic post-lane merge (design.md §5, deja-vu-v2.10).
+
+    Collapses candidates that share an exact canonical GitHub repository
+    identity — regardless of which lane(s) found them — into one record that
+    retains every contributing observation (lane, original url/name,
+    metadata) and surfaces conflicting field values. Everything else —
+    same-named packages, services, standards, research, patterns, or manual
+    candidates without an established shared repository identity — is left
+    untouched and distinct, even when names collide.
+
+    Does not add a graph store, controller, or persistent runtime: this is a
+    single pass over the existing in-memory candidate list, called once after
+    all lanes (including scorecard enrichment) have returned.
+    """
+    groups = {}
+    group_order = []
+    for candidate in candidates:
+        identity = _merge_identity(candidate)
+        if identity is None:
+            continue
+        if identity not in groups:
+            groups[identity] = []
+            group_order.append(identity)
+        groups[identity].append(candidate)
+
+    merged_by_identity = {
+        identity: _merge_group(identity, groups[identity])
+        for identity in group_order
+        if len(groups[identity]) >= 2
+    }
+
+    result = []
+    emitted = set()
+    for candidate in candidates:
+        identity = _merge_identity(candidate)
+        if identity is None or identity not in merged_by_identity:
+            result.append(candidate)
+            continue
+        if identity in emitted:
+            continue
+        emitted.add(identity)
+        result.append(merged_by_identity[identity])
+    return result
+
+
 # --------------------------------------------------------------- driver ---
 
 def run_sweep(query, pattern, language, limit, lanes, no_scorecard):
@@ -442,7 +661,7 @@ def run_sweep(query, pattern, language, limit, lanes, no_scorecard):
     return {
         "query": query,
         "lanes_run": lanes_run,
-        "candidates": candidates,
+        "candidates": merge_candidates(candidates),
         "errors": errors,
     }
 

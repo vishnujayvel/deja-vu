@@ -175,6 +175,10 @@ def test_registry_lane_npm_happy_path(monkeypatch, load_fixture_bytes):
     assert candidates[0]["source_lane"] == "registry:npm"
     assert candidates[0]["name"] == "example-rate-limiter"
     assert candidates[0]["license"] == "MIT"
+    # "url" stays the npm package-page receipt; "repo_url" carries the
+    # registry's own repository link for merge_candidates() to match on.
+    assert candidates[0]["url"] == "https://www.npmjs.com/package/example-rate-limiter"
+    assert candidates[0]["repo_url"] == "https://github.com/example/example-rate-limiter"
 
 
 def test_registry_lane_pypi_happy_path(monkeypatch, load_fixture_bytes):
@@ -324,6 +328,56 @@ def test_registry_lane_crates_malformed_shape_does_not_crash(monkeypatch, payloa
     assert errors == []
 
 
+def test_registry_lane_pypi_populates_repo_url_from_project_urls(monkeypatch):
+    payload = {
+        "info": {
+            "name": "example-rate-limiter",
+            "summary": "A simple rate limiter",
+            "project_url": "https://pypi.org/project/example-rate-limiter/",
+            "project_urls": {
+                "Homepage": "https://example.com",
+                "Source": "https://github.com/example/example-rate-limiter",
+            },
+        }
+    }
+
+    def fake_urlopen(req, timeout=10):
+        return FakeHTTPResponse(json.dumps(payload).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    candidates = sweep.registry_lane("example-rate-limiter", "python", 10, errors)
+
+    assert errors == []
+    assert len(candidates) == 1
+    # "url" stays the pypi.org package-page receipt.
+    assert candidates[0]["url"] == "https://pypi.org/project/example-rate-limiter/"
+    assert candidates[0]["repo_url"] == "https://github.com/example/example-rate-limiter"
+
+
+def test_registry_lane_crates_populates_repo_url_from_repository_field(monkeypatch):
+    payload = {"crates": [{
+        "name": "example-ratelimit",
+        "description": "rate limiting crate",
+        "repository": "https://github.com/example/example-ratelimit",
+    }]}
+
+    def fake_urlopen(req, timeout=10):
+        return FakeHTTPResponse(json.dumps(payload).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    candidates = sweep.registry_lane("rate limiter", "rust", 10, errors)
+
+    assert errors == []
+    assert len(candidates) == 1
+    # "url" stays the crates.io package-page receipt.
+    assert candidates[0]["url"] == "https://crates.io/crates/example-ratelimit"
+    assert candidates[0]["repo_url"] == "https://github.com/example/example-ratelimit"
+
+
 def test_registry_lane_npm_failure_appends_error(monkeypatch):
     def fake_urlopen(req, timeout=10):
         if "registry.npmjs.org" in req.full_url:
@@ -351,11 +405,16 @@ def test_grep_lane_happy_path_dedups_repo_hits(monkeypatch, load_fixture_bytes):
     candidates = sweep.grep_lane("token bucket", None, 10, errors)
 
     assert errors == []
-    # 3 hits fixture, 2 of them share a repo -> deduped to 2 candidates
+    # 3 hits fixture, 2 of them share a repo -> deduped to 2 candidates, but
+    # both matched paths for the shared repo must be preserved, not dropped.
     assert len(candidates) == 2
-    names = {c["name"] for c in candidates}
-    assert names == {"example/rate-limiter", "another/project"}
+    by_name = {c["name"]: c for c in candidates}
+    assert set(by_name) == {"example/rate-limiter", "another/project"}
     assert all(c["source_lane"] == "grep" for c in candidates)
+    assert by_name["example/rate-limiter"]["paths"] == [
+        "src/limiter.py", "tests/test_limiter.py",
+    ]
+    assert by_name["another/project"]["paths"] == ["lib/index.js"]
 
 
 def test_grep_lane_429_then_success_retries(monkeypatch, load_fixture_bytes):
@@ -540,6 +599,202 @@ def test_scorecard_lane_skips_non_github_candidates(monkeypatch):
 
     assert candidates[0]["scorecard"] is None
     assert errors == []
+
+
+# ------------------------------------------------------------------ merge ---
+
+def test_first_github_url_finds_link_among_groups():
+    project_urls = {"Homepage": "https://example.com", "Source": "https://github.com/example/pkg"}
+    assert sweep._first_github_url(project_urls.values(), None) == "https://github.com/example/pkg"
+
+
+def test_first_github_url_returns_none_when_nothing_matches():
+    assert sweep._first_github_url([None, "https://example.com"], "not a url", None) is None
+
+
+@pytest.mark.parametrize("url,expected", [
+    ("https://github.com/example/rate-limiter", "example/rate-limiter"),
+    ("https://github.com/Example/Rate-Limiter", "example/rate-limiter"),  # case-insensitive
+    ("https://github.com/example/rate-limiter.git", "example/rate-limiter"),  # .git suffix
+    ("https://github.com/example/rate-limiter/", "example/rate-limiter"),  # trailing slash
+    ("https://www.github.com/example/rate-limiter", "example/rate-limiter"),  # www host
+    ("git+https://github.com/example/rate-limiter.git", "example/rate-limiter"),  # npm registry form
+    ("git@" + "github.com:example/rate-limiter.git", "example/rate-limiter"),  # SSH remote
+])
+def test_canonical_github_identity_normalizes_equivalent_urls(url, expected):
+    assert sweep._canonical_github_identity(url) == expected
+
+
+@pytest.mark.parametrize("url", [
+    None,
+    "",
+    "https://gitlab.com/example/rate-limiter",  # not GitHub
+    "https://github.com/example",  # no repo segment
+    "https://github.com/../evil",  # path-traversal segment
+    "not a url at all",
+    "https://registry.npmjs.org/rate-limiter",  # registry page, not a repo URL
+])
+def test_canonical_github_identity_returns_none_for_non_repo_urls(url):
+    assert sweep._canonical_github_identity(url) is None
+
+
+def test_merge_candidates_merges_github_and_grep_hits_for_same_repo():
+    github_hit = sweep.empty_candidate(
+        name="example/rate-limiter", url="https://github.com/example/rate-limiter",
+        source_lane="github", description="A rate limiter", stars=420, license="MIT",
+    )
+    grep_hit = sweep.empty_candidate(
+        name="example/rate-limiter", url="https://github.com/example/rate-limiter",
+        source_lane="grep", description="pattern match in src/limiter.py",
+        paths=["src/limiter.py"],
+    )
+
+    merged = sweep.merge_candidates([github_hit, grep_hit])
+
+    assert len(merged) == 1
+    record = merged[0]
+    assert record["source_lane"] == "merged"
+    assert record["canonical_repo"] == "example/rate-limiter"
+    assert record["lanes"] == ["github", "grep"]
+    assert record["observations"] == [github_hit, grep_hit]
+    assert record["stars"] == 420  # only github supplied a value
+    assert record["paths"] == ["src/limiter.py"]
+
+
+def test_merge_candidates_merges_registry_result_with_matching_repository_url(monkeypatch, load_fixture_bytes):
+    """End-to-end: run the real npm fixture through `_npm_search` itself
+    (not a hand-constructed URL no live lane can produce) and confirm
+    `merge_candidates()` still matches it against a github-lane hit on the
+    same repo, while the npm candidate's own package-page receipt (`url`)
+    survives untouched inside `observations`."""
+    def fake_urlopen(req, timeout=10):
+        assert "registry.npmjs.org" in req.full_url
+        return FakeHTTPResponse(load_fixture_bytes("npm_search.json"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    errors = []
+    npm_hits = sweep._npm_search("rate limiter", 10, errors)
+    assert errors == []
+    assert len(npm_hits) == 1
+    npm_hit = npm_hits[0]
+    assert npm_hit["url"] == "https://www.npmjs.com/package/example-rate-limiter"
+    assert npm_hit["repo_url"] == "https://github.com/example/example-rate-limiter"
+
+    github_hit = sweep.empty_candidate(
+        name="example/example-rate-limiter",
+        url="https://github.com/example/example-rate-limiter",
+        source_lane="github", stars=420,
+    )
+
+    merged = sweep.merge_candidates([github_hit, npm_hit])
+
+    assert len(merged) == 1
+    record = merged[0]
+    assert record["canonical_repo"] == "example/example-rate-limiter"
+    assert record["lanes"] == ["github", "registry:npm"]
+    assert record["observations"] == [github_hit, npm_hit]
+    # the npm package-page receipt must not be discarded or overwritten
+    assert record["observations"][1]["url"] == "https://www.npmjs.com/package/example-rate-limiter"
+
+
+def test_merge_candidates_preserves_multiple_grep_paths_in_merged_group():
+    github_hit = sweep.empty_candidate(
+        name="example/rate-limiter", url="https://github.com/example/rate-limiter",
+        source_lane="github",
+    )
+    grep_hit = sweep.empty_candidate(
+        name="example/rate-limiter", url="https://github.com/example/rate-limiter",
+        source_lane="grep", paths=["src/limiter.py", "tests/test_limiter.py"],
+    )
+
+    merged = sweep.merge_candidates([github_hit, grep_hit])
+
+    assert merged[0]["paths"] == ["src/limiter.py", "tests/test_limiter.py"]
+
+
+def test_merge_candidates_surfaces_conflicting_metadata():
+    github_hit = sweep.empty_candidate(
+        name="example/rate-limiter", url="https://github.com/example/rate-limiter",
+        source_lane="github", description="A token-bucket rate limiter", license="MIT",
+        last_push="2026-06-01T00:00:00Z",
+    )
+    registry_hit = sweep.empty_candidate(
+        name="rate-limiter", url="https://github.com/example/rate-limiter",
+        source_lane="registry:npm", description="Simple rate limiting middleware",
+        license="Apache-2.0", last_push="2026-05-01T00:00:00Z",
+    )
+
+    merged = sweep.merge_candidates([github_hit, registry_hit])
+
+    conflicts = merged[0]["conflicts"]
+    assert conflicts["name"] == ["example/rate-limiter", "rate-limiter"]
+    assert conflicts["description"] == [
+        "A token-bucket rate limiter", "Simple rate limiting middleware",
+    ]
+    assert conflicts["license"] == ["MIT", "Apache-2.0"]
+    assert conflicts["last_push"] == ["2026-06-01T00:00:00Z", "2026-05-01T00:00:00Z"]
+    # a field neither observation actually disagreed on must not appear
+    assert "url" not in conflicts
+
+
+def test_merge_candidates_keeps_same_name_non_repo_candidates_distinct():
+    """Two candidates that merely share a name — a manual/standards/registry
+    entry with no established GitHub repository identity — must never be
+    merged just because their names collide."""
+    npm_package = sweep.empty_candidate(
+        name="widget", url="https://www.npmjs.com/package/widget", source_lane="registry:npm",
+    )
+    unrelated_repo = sweep.empty_candidate(
+        name="widget", url="https://github.com/someoneelse/widget", source_lane="github",
+    )
+    manual_pattern = sweep.empty_candidate(
+        name="widget", url=None, source_lane="manual:pattern",
+        description="A design pattern named 'widget' with no repository",
+    )
+
+    merged = sweep.merge_candidates([npm_package, unrelated_repo, manual_pattern])
+
+    assert merged == [npm_package, unrelated_repo, manual_pattern]
+    assert all(c["source_lane"] != "merged" for c in merged)
+
+
+def test_merge_candidates_leaves_single_github_hit_unwrapped():
+    """A github repo hit by only one lane is not a duplicate and must pass
+    through in its original shape (no observations/conflicts wrapper)."""
+    only_hit = sweep.empty_candidate(
+        name="example/rate-limiter", url="https://github.com/example/rate-limiter",
+        source_lane="github", stars=420,
+    )
+
+    merged = sweep.merge_candidates([only_hit])
+
+    assert merged == [only_hit]
+
+
+def test_run_sweep_merges_exact_github_duplicates_across_lanes(monkeypatch):
+    monkeypatch.setattr(sweep, "github_lane", lambda *a, **kw: [
+        sweep.empty_candidate(
+            name="example/rate-limiter", url="https://github.com/example/rate-limiter",
+            source_lane="github", stars=420,
+        )
+    ])
+    monkeypatch.setattr(sweep, "registry_lane", lambda *a, **kw: [])
+    monkeypatch.setattr(sweep, "grep_lane", lambda *a, **kw: [
+        sweep.empty_candidate(
+            name="example/rate-limiter", url="https://github.com/example/rate-limiter",
+            source_lane="grep", paths=["src/limiter.py"],
+        )
+    ])
+
+    result = sweep.run_sweep(
+        query="rate limiter", pattern=None, language=None, limit=5,
+        lanes="github,registry,grep", no_scorecard=True,
+    )
+
+    assert len(result["candidates"]) == 1
+    assert result["candidates"][0]["canonical_repo"] == "example/rate-limiter"
+    assert result["candidates"][0]["lanes"] == ["github", "grep"]
 
 
 # ------------------------------------------------------------------ driver ---
