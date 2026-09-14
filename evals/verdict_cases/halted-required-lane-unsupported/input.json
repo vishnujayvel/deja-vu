@@ -1,0 +1,16 @@
+{
+  "problem": "need a backoff/throttle layer for outbound webhook delivery",
+  "tier": "standard",
+  "sweep": {
+    "query": "outbound webhook delivery backoff throttle",
+    "lanes_run": ["github", "registry"],
+    "candidates": [],
+    "errors": [
+      "github: unsupported -- unauthenticated GitHub REST search rate-limited (HTTP 403); no gh CLI available, required lane could not run"
+    ]
+  },
+  "provenance": {
+    "profiles": [],
+    "errors": []
+  }
+}

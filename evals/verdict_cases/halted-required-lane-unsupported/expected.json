@@ -1,0 +1,10 @@
+{
+  "stopping_rule": "required_human_decision",
+  "authority": "human-required",
+  "key_reasons": [
+    "github is a required lane at the standard tier (policy/tier-matrix.json tiers.standard.required_lanes) and it reports lane_status unsupported (unauthenticated GitHub REST search rate-limited, no gh CLI available): an unsupported required lane never counts as an empty success",
+    "the registry lane completed but found nothing for this multi-word phrase; its PyPI adapter only does an exact-slug lookup, so a real near-match package under a different name would not surface here either",
+    "coverage is incomplete, not exhausted -- this empty candidate list must not be read as proof that no prior art exists",
+    "policy/tier-matrix.json stopping_rules.required_human_decision: an unsupported required lane halts the hunt for human handoff before Gate is ever reached -- no verdict is issued from this state, BUILD included, because BUILD specifically means 'nothing fits' and that has not been established"
+  ]
+}

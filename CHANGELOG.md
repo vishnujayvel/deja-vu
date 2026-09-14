@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `SKILL.md` frontmatter no longer fails Codex skill-creator structural
+  validation: moved the bare top-level `version` key (unsupported per the
+  Agent Skills spec's allowed-property set) under `metadata.version`, and
+  trimmed the `description` field from 1474 to 1007 characters to clear the
+  1024-character cap — both were blocking `Skill is valid!` on this skill.
+  `scripts/sync_codex_plugin.py`'s manifest-version check now reads
+  `metadata.version` from the frontmatter block instead of a top-level key.
+- Slimmed activated context: cut the "Trust boundary" section's inline
+  sandbox-protocol restatement (already fully covered in
+  `references/snowball-probe.md`'s Stage 5) down to the core invariant plus
+  a pointer, removing duplication between always-loaded and progressively-
+  disclosed content. `SKILL.md` drops from 171 to 162 lines, 1881 to 1747
+  words, 12,742 to 11,775 Unicode characters (12,820 to 11,849 UTF-8 bytes),
+  ~3,185.5 to ~2,943.75 estimated tokens (chars/4), with no change to the
+  six verdicts, the asymmetric BUILD gate, or the trust boundary's actual
+  rules.
+
 ## [0.1.1] - 2026-07-19
 
 ### Fixed
