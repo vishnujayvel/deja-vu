@@ -277,6 +277,19 @@ is a data contract a hunt *may* populate, not something this repository's curren
 enforces or requires — populating it is optional and incremental per hunt (ADR-11's
 "Consequences").
 
+`scripts/decision_packet.py` closes the one piece ADR-11 left as deferred future work:
+reproducing `approval_material_sha256` and each `route_components` entry's hash from a
+canonical serialization, then using that reproducibility — never the packet's own
+self-reported claims — to decide which `executable_component_ids` an `authorized` record
+may actually treat as authorized. A component only counts as authorized when the
+`authorized` packet's `proposed_packet_ref` hash and at least one `approved`
+`authority_receipt`'s hashes both independently reproduce from the supplied `proposed`
+packet; any drift (a tampered proposal, a stale or mismatched receipt, a claimed component
+with no covering receipt at all) fails closed into `unauthorized_component_ids`. This is
+pure, stdlib-only, and does no signing or network I/O — it makes the paper trail
+mechanically checkable, it does not replace SKILL.md's human sign-off. See
+`tests/test_decision_packet_gate.py`.
+
 ## 6. Prior art of this skill itself
 
 deja-vu was designed under its own discipline. The hunt found four existing candidates and
