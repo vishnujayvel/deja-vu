@@ -106,6 +106,16 @@ not part of this change.
 - Downstream tooling that currently reads only the free-text verdict is unaffected; it
   can adopt the packet schema incrementally per hunt.
 
+**2026-09-18 addendum:** the deferred canonical-serialization work above is implemented in
+`scripts/decision_packet.py` (`tests/test_decision_packet_gate.py`), pure and stdlib-only.
+It recomputes `approval_material_sha256` and per-component hashes from a fixed
+`json.dumps(..., sort_keys=True, separators=(",", ":"))` canonicalization and uses only that
+reproducibility — never an `authorized` packet's self-reported claims — to decide which
+`executable_component_ids` are actually authorized, failing closed on any drift. This adds
+no signing, no network I/O, no second gate service, and no change to SKILL.md's human
+sign-off; it only makes the existing receipt claims mechanically checkable instead of
+merely schema-shaped.
+
 ## Review trigger
 
 Re-validate if `docs/design.md` §5.4 changes the dimension list, the packet/record split,
