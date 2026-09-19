@@ -247,9 +247,11 @@ process. See §7 for the one hunt-level (as opposed to lane-level) state this sk
 An append-only JSONL file, one record per resolved hunt, checked at trigger time (§2.1) so
 the same question is never re-hunted from scratch. Each record carries enough to answer
 "has this been decided, and is that decision still fresh?" — problem statement, verdict,
-receipts, and a review-by date for staleness. The registry is project-owned, not shared
-across projects (§2.5's durability principle): `data/decisions-registry.jsonl` stays local
-and gitignored, exactly like any other project-specific state this skill produces.
+sources (the winning candidate's provenance, matching the ADR's own Sources line), and a
+review-by date for staleness. The registry is project-owned, not shared across projects
+(§2.5's durability principle): `data/decisions-registry.jsonl` stays local and gitignored,
+exactly like any other project-specific state this skill produces — which is also why it can
+carry project-local detail the tracked, public ADR should not (`references/record.md`).
 
 ### 5.4 Decision packet
 
