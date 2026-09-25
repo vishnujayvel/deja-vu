@@ -96,3 +96,79 @@ Stage 1 (Trigger) checks this file first, every time, before any lane runs — t
 invocation is in `SKILL.md` §0. A hunt whose registry entry hasn't hit `review_by` yet is cited,
 not repeated. A stale entry gets re-validated starting at Stage 5 (Probe) on the previously
 winning candidate only — not a full re-sweep from Stage 3.
+
+## Revalidating a stale decision
+
+A passed `review_by` means the evidence is old enough to recheck before citing again, not that
+the verdict was wrong. `SKILL.md` §0 decides *whether* that means a targeted probe of the prior
+winner or a fresh hunt from stage 0; this section shows what the resulting record looks like.
+Both cases start from the same read: the prior ADR plus its registry line. It is a manual
+write-up like any other ADR — no scheduler, controller, or automatic change-detector triggers it.
+
+Compare the prior record against the current evidence, rights (license, ownership, terms), and
+requirements. Then state: recommendation **retained** or **changed**, and any unresolved
+uncertainty.
+
+### Case A — framing holds, winner re-confirmed (targeted probe)
+
+Problem, constraints, and exclusion criteria are unchanged, so re-probe only the previous winner
+(stage 5). No new sweep or snowball.
+
+```markdown
+## Revalidation — ADR-3 (2027-01-22)
+
+**Prior record:** ADR-3 (2026-07-19), registry id `adr-3`, DEPEND on `example-org/example-lib`.
+**Trigger:** `review_by` 2027-01-19 passed.
+**Changed since:** evidence only — license unchanged (MIT), 3 releases since the prior probe,
+  no new advisories. Requirements and rights: unchanged.
+**Recommendation:** retained — DEPEND on `example-org/example-lib`.
+**Unresolved uncertainty:** the single-maintainer risk from ADR-3 still stands; not re-litigated.
+**Why a targeted probe suffices:** only time changed. A full sweep would re-derive the same
+  shortlist at far higher cost for no new information.
+```
+
+Append a superseding registry line; the original is never edited:
+
+```json
+{"id": "adr-3-revalidated-2027-01", "date": "2027-01-22", "problem": "<same as adr-3>",
+ "vocabularies": ["..."], "verdict": "DEPEND", "candidate": "example-org/example-lib",
+ "sources": ["gh:example-org/example-lib"],
+ "confidence": "high", "degraded_lanes": [], "evidence_gaps": [], "unresolved_ambiguity": [],
+ "review_by": "2027-07-22", "adr_path": "docs/adr/0003-....md",
+ "supersedes": "adr-3", "delta": "winner re-confirmed, no framing change"}
+```
+
+### Case B — requirements changed, fresh hunt
+
+A changed constraint (new compliance requirement, rights change, license change on the
+incumbent) means the old question is no longer the one being asked: restart from stage 0
+(Re-problem) and re-frame at stage 2, not stage 5.
+
+```markdown
+## Revalidation — ADR-7 (2027-02-03)
+
+**Prior record:** ADR-7 (2026-06-01), registry id `adr-7`, VENDOR (reimplemented the idea
+  rather than depend on an unlicensed prototype).
+**Trigger:** `review_by` 2026-12-01 passed; the re-check also surfaced a new requirement — the
+  consuming service now needs audit logging that the original problem never scoped.
+**Changed since:** requirements. The original candidate is still unlicensed and unmaintained,
+  which is moot given the new requirement.
+**Recommendation:** changed — problem restated, fresh hunt run (ADR-9): a maintained
+  Apache-2.0 candidate with built-in audit logging; verdict DEPEND.
+**Unresolved uncertainty:** none carried forward; ADR-9's Judge stage records its own gaps.
+**Why a fresh hunt:** ADR-7's exclusion criteria no longer match the ask; re-probing the old
+  winner under them would answer a question nobody is asking.
+```
+
+The new hunt's registry line (`adr-9`) carries `"supersedes": "adr-7"`; ADR-7's line is untouched.
+
+### Preserve either way
+
+- Original ADR and registry line are never edited or deleted. The superseding line points
+  backward (`supersedes`); no reverse link is written into the original.
+- Keep `sources` and `review_by` (ADR Decision block and registry line) on every new record, and
+  the privacy checks above: registry gitignored, ADR generic enough to publish.
+- If a source from the original probe is unavailable now (dead link, private repo, deleted
+  account), say so in the revalidation record rather than silently dropping it — an unreachable
+  receipt is recorded uncertainty, not an omission.
+- `scripts/sanitize_check.sh` applies as usual: no machine-specific paths, emails, or secrets.
