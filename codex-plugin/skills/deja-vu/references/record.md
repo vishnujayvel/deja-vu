@@ -106,7 +106,9 @@ Both cases start from the same read: the prior ADR plus its registry line. It is
 write-up like any other ADR — no scheduler, controller, or automatic change-detector triggers it.
 
 Compare the prior record against the current evidence, rights (license, ownership, terms), and
-requirements. Then state: recommendation **retained** or **changed**, and any unresolved
+requirements. Report a delta line for each of additions, removals, contradictions, rights
+changes, and recommendation change — `none` where applicable, so "nothing changed" is stated,
+not implied. Then state the recommendation (**retained** or **changed**) and any unresolved
 uncertainty.
 
 ### Case A — framing holds, winner re-confirmed (targeted probe)
@@ -119,8 +121,12 @@ Problem, constraints, and exclusion criteria are unchanged, so re-probe only the
 
 **Prior record:** ADR-3 (2026-07-19), registry id `adr-3`, DEPEND on `example-org/example-lib`.
 **Trigger:** `review_by` 2027-01-19 passed.
-**Changed since:** evidence only — license unchanged (MIT), 3 releases since the prior probe,
-  no new advisories. Requirements and rights: unchanged.
+**Delta vs. prior record** (write `none` where nothing changed; never omit a category):
+  - Additions: 3 releases since the prior probe.
+  - Removals: none.
+  - Contradictions: none — prior probe findings still hold.
+  - Rights changes: none — license unchanged (MIT).
+  - Recommendation change: none — retained.
 **Recommendation:** retained — DEPEND on `example-org/example-lib`.
 **Unresolved uncertainty:** the single-maintainer risk from ADR-3 still stands; not re-litigated.
 **Why a targeted probe suffices:** only time changed. A full sweep would re-derive the same
@@ -151,8 +157,14 @@ incumbent) means the old question is no longer the one being asked: restart from
   rather than depend on an unlicensed prototype).
 **Trigger:** `review_by` 2026-12-01 passed; the re-check also surfaced a new requirement — the
   consuming service now needs audit logging that the original problem never scoped.
-**Changed since:** requirements. The original candidate is still unlicensed and unmaintained,
-  which is moot given the new requirement.
+**Delta vs. prior record** (write `none` where nothing changed; never omit a category):
+  - Additions: new requirement — audit logging, never scoped in the original problem.
+  - Removals: none — ADR-7's record and receipts are kept as-is.
+  - Contradictions: none — ADR-7's findings on the old candidate still hold (unlicensed,
+    unmaintained); they are moot, not wrong.
+  - Rights changes: none for the old candidate (still unlicensed); the new candidate is
+    Apache-2.0.
+  - Recommendation change: VENDOR -> DEPEND (via ADR-9).
 **Recommendation:** changed — problem restated, fresh hunt run (ADR-9): a maintained
   Apache-2.0 candidate with built-in audit logging; verdict DEPEND.
 **Unresolved uncertainty:** none carried forward; ADR-9's Judge stage records its own gaps.
