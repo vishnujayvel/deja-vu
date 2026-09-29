@@ -76,6 +76,76 @@ comparable observations**: multiple `calibration.jsonl` entries that share an `o
 a common thread in their `interpretation` fields, not one striking entry. List the cited
 `registry_id`s in the proposal so the human can check the cohort, not just trust the summary.
 
+## Cohort debriefs
+
+A cohort debrief is a manual write-up over a handful of `calibration.jsonl` lines — no
+database, service, or scheduler. It exists so a proposal rests on comparable cases, not on
+whichever entry was most memorable.
+
+**Cohort inclusion.** State the rule before listing members, using attributes already in the
+registry and calibration lines: `outcome_kind`, `original_verdict`, the problem's vocabulary,
+and an evidence attribute (e.g. a degraded lane, or a candidate with one maintainer). Entries
+are comparable only if they match on every attribute the rule names. Don't pad a cohort with
+near-matches, and don't drop a member because it complicates the story — a contrary entry that
+fits the rule is a counterexample and gets listed (below).
+
+**Descriptive measures — only where the evidence supports them.** Report counts, not a score;
+never combine them into a single quality number. Each measure needs a numerator and
+denominator drawn from cited entries, or it is omitted:
+
+| Measure | Read from |
+|---|---|
+| Avoided builds | non-BUILD verdicts whose outcome was `success` |
+| Evidence completeness | entries with empty `evidence_gaps` and `degraded_lanes` / all entries |
+| Integration delta | extra integration work beyond the Stage 6 estimate, where an `observed_fact` records it |
+| Reversal rate | `decision-reversal` entries / all entries |
+| Revalidation value | revalidations (`references/record.md`) that changed the recommendation / all revalidations |
+
+**Flag weak cohorts.** Say so in the debrief itself, not in a footnote, when:
+
+- **Small** — fewer than about five comparable entries, so one entry moves any rate by 20+
+  points. Report the counts and stop; do not propose.
+- **Biased** — members share a selection effect: same maintainer or ecosystem, same reviewer,
+  or only cases old enough to have an outcome (survivorship). Name the effect.
+- **Missing data** — `measurement-gap` entries, or blank fields behind a measure. Count them
+  separately from the denominator instead of dropping them.
+
+### Example debrief and proposal
+
+```markdown
+## Cohort debrief — post-adoption license changes (2027-03-10)
+
+**Inclusion rule:** `original_verdict` DEPEND, `outcome_kind` in {`abandonment`,
+  `decision-reversal`}, interpretation cites a license or governance change.
+**Members (6):** `adr-3`, `adr-5`, `adr-8`, `adr-11`, `adr-12`, `adr-14`.
+**Observed** (checkable):
+  - 6 of 14 DEPEND entries reviewed in this window match the rule.
+  - Evidence completeness: 10 of 14 DEPEND entries had no `evidence_gaps`.
+  - Reversal rate among DEPEND entries: 2 of 14 (`adr-5`, `adr-11`).
+  - Integration delta: recorded in only 2 entries; not reported.
+  - Missing data: `adr-6` is a `measurement-gap`, counted apart from the 14.
+**Counterexamples:** `adr-2`, `adr-9` — DEPEND on candidates whose license stayed stable for the
+  whole window; the pattern doesn't explain them.
+**Limits:** n=14 total, 6 in the cohort — above the small-cohort line but thin. Only entries old enough to have an outcome are
+  included (survivorship). Four of six members share one ecosystem (bias).
+**Interpretation** (not observed): the health dimension may under-weight post-adoption license
+  risk in that ecosystem.
+
+## Proposal (not applied)
+
+**Change:** in `references/judge.md`, weigh a candidate's license-change history in the health
+  dimension.
+**Cohort:** `adr-3`, `adr-5`, `adr-8`, `adr-11`, `adr-12`, `adr-14`. **Counterexamples:** `adr-2`, `adr-9`.
+**Held-out check:** run `python3 evals/run_evals.py --offline` plus the next three hunts'
+  shortlists through the changed Judge; the change fails if the `adr-2` or `adr-9` winner flips.
+**Rollback:** revert the single commit; no registry or calibration line is edited.
+**Decision:** a human, in a normal reviewed Git change — nothing here edits live policy.
+```
+
+A proposal states the cohort and its size, the supporting and counterexample `registry_id`s,
+the limits above, a held-out check, and a rollback idea. A small cohort yields a debrief with no
+proposal. Either way it is a write-up for a human; it changes nothing by itself.
+
 ## Sanitizable promotion fields
 
 `calibration.jsonl` stays project-local — gitignored per the protection step above, never synced
