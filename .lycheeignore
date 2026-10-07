@@ -1,2 +1,5 @@
 # hosts that rate-limit CI
 https://grep.app/api/*
+# hosts that block or time out GitHub-hosted runners (reachable from a browser)
+https://www\.wohlin\.eu/
+https://www\.libhunt\.com/
