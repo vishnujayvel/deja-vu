@@ -18,6 +18,42 @@ deja-vu asks "has someone already solved this?" through a ten-stage loop, then b
 it finds with the actual repos, license, and health data it checked, not a star count. Full
 design rationale and the failure mode each stage addresses: [`docs/design.md`](docs/design.md).
 
+## Two-minute quickstart
+
+1. **Install** (Claude Code shown; Codex and manual installs are under [Install](#install)):
+   ```bash
+   claude plugin marketplace add vishnujayvel/deja-vu
+   claude plugin install deja-vu@deja-vu-marketplace
+   ```
+2. **Ask a build-shaped question** in a project, e.g. *"I'm about to write a link checker for
+   our docs CI — run a deja-vu hunt first."*
+3. **Read what comes back**: a verdict, the candidates it compared and why each lost or won,
+   the commands it ran as receipts, and any lanes that degraded. It's saved as an ADR in your
+   project — [A real example](#a-real-example) below shows what one looks like.
+4. **If results look thin**, ask the agent to run the setup check ([Setup check](#setup-check));
+   it names each missing or degraded source.
+
+### What a hunt does
+
+In order: **re-problem** (is this even the right problem?) → **pick a tier** (quick, standard,
+or full, by how hard the choice is to reverse) → **frame** it in other communities' vocabulary
+→ **sweep** sources → **snowball** from strong hits → **probe** (full tier only, sandboxed) →
+**judge** against criteria declared up front → **gate** → **record**. Each stage is detailed in
+[`SKILL.md`](SKILL.md) and [`references/`](references/).
+
+### Build, buy, or borrow — what the verdicts mean for you
+
+The illustration above maps onto the six verdicts:
+
+- **Buy** (the prefabricated span) — `DEPEND`: adopt an existing tool unmodified as a
+  dependency. You write glue, not a reimplementation.
+- **Borrow** (the shared stone arch) — `FORK` or `VENDOR`: take existing code and own your
+  changes to it (FORK diverges from upstream; VENDOR copies it in, license permitting).
+- **Build** (the bridge under construction) — `BUILD`: nothing fits. Only issued with a list of
+  every candidate considered and why each failed, and never without your sign-off.
+- **Don't cross at all** — `NOT-A-PROBLEM` / `DIFFERENT-PROBLEM`: the cheapest outcome; the
+  requirement can be dropped or the real problem is somewhere else.
+
 ## Install
 
 **Option A — git clone + symlink** (full control over the checkout location):
@@ -164,8 +200,33 @@ rate-limit handling) — one candidate was excluded outright for having gone dor
 on **DEPEND**: adopt [`lycheeverse/lychee`](https://github.com/lycheeverse/lychee) unmodified,
 via [`lycheeverse/lychee-action`](https://github.com/lycheeverse/lychee-action) in CI.
 
-The first CI run using it caught real dead links in this repo's own docs; the fix is
-[`db1f4aa`](https://github.com/vishnujayvel/deja-vu/commit/db1f4aad77c90f389981f2e05a98f3d2fbe9e1f7).
+Condensed from that ADR — the shape of what a hunt hands back:
+
+| Candidate | What the hunt found | Outcome |
+|---|---|---|
+| lychee + lychee-action | Purpose-built CI action, Apache-2.0, actively pushed, built-in retries and an ignore file for rate-limited hosts | **Won** on every declared criterion |
+| markdown-link-check | Active, ISC license, single maintainer; Markdown-only, Node runtime | Healthy runner-up |
+| broken-link-checker | No push since 2024-01 | Excluded by a dormancy rule written *before* the sweep |
+| A wrapper action | Thin wrapper over the same category | Adopt the engine, not the wrapper |
+| Custom script (BUILD) | Commodity plumbing; would rediscover retries, rate limits, and false positives the hard way | Lost |
+
+**Verdict: DEPEND** (quick tier — removing one CI step makes it cheap to reverse).
+
+What was discovered versus tested, stated plainly:
+
+- **Discovered** (search and repository metadata): every row above. Two keyword sweeps
+  (`markdown link checker`, `broken link checker`) both *missed* lychee, which calls itself an
+  "async link checker"; it was confirmed by direct lookup. That vocabulary gap is exactly what
+  Stage 2's multi-vocabulary framing is for.
+- **Not tested during the hunt**: no candidate was installed or run — hands-on probing is a
+  full-tier stage, and this was a quick-tier decision.
+- **Tested after adoption**: the first CI run using lychee caught real dead links in this
+  repo's own docs; the fix is
+  [`db1f4aa`](https://github.com/vishnujayvel/deja-vu/commit/db1f4aad77c90f389981f2e05a98f3d2fbe9e1f7).
+
+The full ADR lists every command run and what it returned. It predates the ADR template's
+`Confidence` / `Degraded lanes` / `Evidence gaps` fields, which hunts now fill in
+([`references/record.md`](references/record.md)).
 
 ## Limitations
 
