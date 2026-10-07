@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- README: a two-minute quickstart (install → ask → read the result → setup
+  check), a one-paragraph map of the hunt's stages, a plain-text mapping of the
+  build/buy/borrow illustration onto the six verdicts, and a condensed version
+  of ADR-1's result that labels what was discovered, what was not tested
+  during the hunt, and what was tested after adoption (deja-vu-v2.23).
+
 ### Fixed
 
 - `SKILL.md` frontmatter no longer fails Codex skill-creator structural
